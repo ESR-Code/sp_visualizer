@@ -169,6 +169,19 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     }))
   }, [])
 
+  const onSoloVisibility = useCallback((type: NodeType | 'foreignKey') => {
+    setVisibility({
+      table: false,
+      enum: false,
+      function: false,
+      trigger: false,
+      policy: false,
+      foreignKey: false,
+      group: true,
+      [type]: true,
+    })
+  }, [])
+
   const onViewCode = useCallback((title: string, code: string) => {
     setCodeModal({ isOpen: true, title, code })
   }, [])
@@ -249,7 +262,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
           position="top-right"
         />
       </ReactFlow>
-      <Legend visibility={visibility} onToggle={onToggleVisibility} />
+      <Legend visibility={visibility} onToggle={onToggleVisibility} onSolo={onSoloVisibility} />
       <button
         onClick={onResetLayout}
         className="absolute left-4 top-4 z-10 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"

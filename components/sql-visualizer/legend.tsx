@@ -26,9 +26,10 @@ export type VisibilityState = Record<NodeType | 'foreignKey', boolean>
 interface LegendProps {
   visibility: VisibilityState
   onToggle: (type: NodeType | 'foreignKey') => void
+  onSolo: (type: NodeType | 'foreignKey') => void
 }
 
-export function Legend({ visibility, onToggle }: LegendProps) {
+export function Legend({ visibility, onToggle, onSolo }: LegendProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   return (
@@ -51,25 +52,37 @@ export function Legend({ visibility, onToggle }: LegendProps) {
           {items.map((item) => {
             const isVisible = visibility[item.type]
             return (
-              <button
-                key={item.label}
-                onClick={() => onToggle(item.type)}
-                className={`flex items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-zinc-800 ${
-                  isVisible ? '' : 'opacity-40'
-                }`}
-              >
-                <span className={isVisible ? item.activeColor : item.color}>
-                  {item.icon}
-                </span>
-                <span className={`text-xs ${isVisible ? 'text-zinc-200' : 'text-zinc-500 font-medium'}`}>
-                  {item.label}
-                </span>
-                {isVisible ? (
-                  <Eye className="ml-auto h-3.5 w-3.5 text-zinc-600" />
-                ) : (
-                  <EyeOff className="ml-auto h-3.5 w-3.5 text-zinc-700" />
-                )}
-              </button>
+              <div key={item.label} className="flex gap-1 group">
+                <button
+                  onClick={() => onToggle(item.type)}
+                  className={`flex items-center gap-2 flex-grow rounded px-2 py-1.5 transition-colors hover:bg-zinc-800 ${
+                    isVisible ? '' : 'opacity-40'
+                  }`}
+                  title="Toggle Visibility"
+                >
+                  <span className={isVisible ? item.activeColor : item.color}>
+                    {item.icon}
+                  </span>
+                  <span className={`text-xs ${isVisible ? 'text-zinc-200' : 'text-zinc-500 font-medium'}`}>
+                    {item.label}
+                  </span>
+                  {isVisible ? (
+                    <Eye className="ml-auto h-3.5 w-3.5 text-zinc-600" />
+                  ) : (
+                    <EyeOff className="ml-auto h-3.5 w-3.5 text-zinc-700" />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSolo(item.type)
+                  }}
+                  className="rounded px-2 text-zinc-500 hover:bg-zinc-800 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all font-medium text-[10px] tracking-wider uppercase"
+                  title="Solo this category"
+                >
+                  Solo
+                </button>
+              </div>
             )
           })}
         </div>

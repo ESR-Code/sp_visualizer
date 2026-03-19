@@ -83,6 +83,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         labelStyle: { fill: '#94a3b8', fontSize: 10 },
         labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
         labelBgPadding: [4, 2] as [number, number],
+        data: { type: 'foreignKey' },
       })
     }
   })
@@ -100,6 +101,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         type: 'smoothstep',
         animated: true,
         style: { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '5,5' },
+        data: { type: 'triggerTable' },
       })
     }
   })
@@ -121,6 +123,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         labelStyle: { fill: '#94a3b8', fontSize: 10 },
         labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
         labelBgPadding: [4, 2] as [number, number],
+        data: { type: 'triggerFunction' },
       })
     }
   })
@@ -146,6 +149,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         labelStyle: { fill: '#94a3b8', fontSize: 10 },
         labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
         labelBgPadding: [4, 2] as [number, number],
+        data: { type: 'enumUsage' },
       })
     }
   })
@@ -163,6 +167,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         type: 'smoothstep',
         animated: false,
         style: { stroke: '#ef4444', strokeWidth: 2, strokeDasharray: '5,5' },
+        data: { type: 'policyTable' },
       })
     }
   })
