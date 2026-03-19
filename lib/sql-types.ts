@@ -75,6 +75,14 @@ export interface EnumUsage {
   columnName: string
 }
 
+export interface FunctionCall {
+  id: string
+  callerName: string
+  callerSchema: string
+  calleeName: string
+  calleeSchema: string
+}
+
 export interface ParsedSchema {
   tables: ParsedTable[]
   enums: ParsedEnum[]
@@ -83,6 +91,7 @@ export interface ParsedSchema {
   policies: ParsedPolicy[]
   foreignKeys: ForeignKeyRelation[]
   enumUsages: EnumUsage[]
+  functionCalls: FunctionCall[]
 }
 
 // Node types for React Flow
@@ -113,4 +122,4 @@ export interface PolicyNodeData extends BaseNodeData {
 }
 
 // Edge types
-export type EdgeType = 'foreignKey' | 'triggerTable' | 'triggerFunction' | 'enumUsage' | 'policyTable'
+export type EdgeType = 'foreignKey' | 'triggerTable' | 'triggerFunction' | 'enumUsage' | 'policyTable' | 'functionCall'

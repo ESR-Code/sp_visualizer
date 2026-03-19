@@ -7,6 +7,7 @@ import {
   ParsedPolicy,
   ForeignKeyRelation,
   EnumUsage,
+  FunctionCall,
   Column,
 } from './sql-types'
 
@@ -288,6 +289,43 @@ function findEnumUsages(tables: ParsedTable[], enums: ParsedEnum[]): EnumUsage[]
   return enumUsages
 }
 
+// Find function calls within function bodies
+function findFunctionCalls(functions: ParsedFunction[]): FunctionCall[] {
+  const functionCalls: FunctionCall[] = []
+  
+  for (const caller of functions) {
+    if (!caller.body) continue
+    
+    for (const callee of functions) {
+      // Avoid linking to self unless recursive (optional)
+      if (caller.id === callee.id) continue
+      
+      // Look for callee name followed by parenthesis
+      // Handles: callee(), schema.callee(), PERFORM callee(), etc.
+      const escapedCallee = callee.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const escapedSchema = callee.schema.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      
+      // Regex to find function calls:
+      // 1. Optional schema prefix
+      // 2. Callee name
+      // 3. Opening parenthesis
+      const callPattern = new RegExp(`(?:["']?${escapedSchema}["']?\\.)?["']?${escapedCallee}["']?\\s*\\(`, 'gi')
+      
+      if (callPattern.test(caller.body)) {
+        functionCalls.push({
+          id: generateId('func-call'),
+          callerName: caller.name,
+          callerSchema: caller.schema,
+          calleeName: callee.name,
+          calleeSchema: callee.schema,
+        })
+      }
+    }
+  }
+  
+  return functionCalls
+}
+
 // Main parser function
 export function parseSQL(sql: string): ParsedSchema {
   resetIdCounter()
@@ -307,6 +345,7 @@ export function parseSQL(sql: string): ParsedSchema {
   parseDisabledTriggers(cleanedSql, triggers)
   
   const enumUsages = findEnumUsages(tables, enums)
+  const functionCalls = findFunctionCalls(functions)
   
   return {
     tables,
@@ -316,6 +355,7 @@ export function parseSQL(sql: string): ParsedSchema {
     policies,
     foreignKeys,
     enumUsages,
+    functionCalls,
   }
 }
 

@@ -167,6 +167,29 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
     }
   })
 
+  // Create edges for function → function calls
+  schema.functionCalls.forEach((call) => {
+    const callerFunc = schema.functions.find((f) => f.name === call.callerName && f.schema === call.callerSchema)
+    const calleeFunc = schema.functions.find((f) => f.name === call.calleeName && f.schema === call.calleeSchema)
+    
+    if (callerFunc && calleeFunc) {
+      edges.push({
+        id: call.id,
+        source: callerFunc.id,
+        target: calleeFunc.id,
+        sourceHandle: `${callerFunc.name}-source`,
+        targetHandle: `${calleeFunc.name}-target`,
+        type: 'smoothstep',
+        animated: true,
+        style: { stroke: '#22c55e', strokeWidth: 2, strokeDasharray: '4,4' },
+        label: 'calls',
+        labelStyle: { fill: '#94a3b8', fontSize: 10 },
+        labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
+        labelBgPadding: [4, 2] as [number, number],
+      })
+    }
+  })
+
   return { nodes, edges }
 }
 
