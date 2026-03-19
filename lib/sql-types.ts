@@ -45,6 +45,7 @@ export interface ParsedTrigger {
   tableSchema: string
   functionName: string
   functionSchema: string
+  isDisabled?: boolean
 }
 
 export interface ParsedPolicy {

@@ -249,6 +249,22 @@ function parsePolicies(sql: string): ParsedPolicy[] {
   return policies
 }
 
+// Parse ALTER TABLE ... DISABLE TRIGGER statements
+function parseDisabledTriggers(sql: string, triggers: ParsedTrigger[]) {
+  const disableRegex = /ALTER\s+TABLE\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+DISABLE\s+TRIGGER\s+["']?([^"'\s;]+)["']?/gi
+  
+  let match
+  while ((match = disableRegex.exec(sql)) !== null) {
+    const tableName = match[2]
+    const triggerName = match[3]
+    
+    const trigger = triggers.find(t => t.name === triggerName && t.tableName === tableName)
+    if (trigger) {
+      trigger.isDisabled = true
+    }
+  }
+}
+
 // Find enum usages in table columns
 function findEnumUsages(tables: ParsedTable[], enums: ParsedEnum[]): EnumUsage[] {
   const enumUsages: EnumUsage[] = []
@@ -286,6 +302,10 @@ export function parseSQL(sql: string): ParsedSchema {
   const functions = parseFunctions(cleanedSql)
   const triggers = parseTriggers(cleanedSql)
   const policies = parsePolicies(cleanedSql)
+  
+  // Mark disabled triggers
+  parseDisabledTriggers(cleanedSql, triggers)
+  
   const enumUsages = findEnumUsages(tables, enums)
   
   return {
