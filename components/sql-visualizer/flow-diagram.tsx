@@ -260,7 +260,23 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     if (!rfInstance) return
     const { position, measured } = node
     
-    // Target position is node pos + half width/height
+    // Calculate absolute position if the node is inside a parent frame
+    let absX = position.x
+    let absY = position.y
+    let currentParentId = node.parentId
+    
+    while (currentParentId) {
+      const parentNode = rfInstance.getNode(currentParentId)
+      if (parentNode) {
+        absX += parentNode.position.x
+        absY += parentNode.position.y
+        currentParentId = parentNode.parentId
+      } else {
+        break
+      }
+    }
+
+    // Target position is absolute pos + half width/height
     let w = 200
     let h = 100
     if (measured && measured.width && measured.height) {
@@ -271,8 +287,8 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
       h = node.height
     }
     
-    const x = position.x + w / 2
-    const y = position.y + h / 2
+    const x = absX + w / 2
+    const y = absY + h / 2
 
     rfInstance.setCenter(x, y, { duration: 800, zoom: 1.2 })
     setSearchQuery('')
