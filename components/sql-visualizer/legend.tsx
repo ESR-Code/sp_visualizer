@@ -1,6 +1,7 @@
 'use client'
 
-import { Table2, List, Code2, Zap, Shield, Link, Eye, EyeOff } from 'lucide-react'
+import { useState } from 'react'
+import { Table2, List, Code2, Zap, Shield, Link, Eye, EyeOff, ChevronDown, ChevronUp, Layers } from 'lucide-react'
 import type { NodeType } from '@/lib/sql-types'
 
 interface LegendItem {
@@ -28,35 +29,51 @@ interface LegendProps {
 }
 
 export function Legend({ visibility, onToggle }: LegendProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
   return (
-    <div className="absolute bottom-4 right-4 z-10 rounded-lg border border-zinc-800 bg-zinc-900/95 p-3 shadow-xl backdrop-blur">
-      <div className="mb-2 text-xs font-medium text-zinc-400">Toggle Visibility</div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-        {items.map((item) => {
-          const isVisible = visibility[item.type]
-          return (
-            <button
-              key={item.label}
-              onClick={() => onToggle(item.type)}
-              className={`flex items-center gap-2 rounded px-1.5 py-0.5 transition-colors hover:bg-zinc-800 ${
-                isVisible ? '' : 'opacity-50'
-              }`}
-            >
-              <span className={isVisible ? item.activeColor : item.color}>
-                {item.icon}
-              </span>
-              <span className={`text-xs ${isVisible ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                {item.label}
-              </span>
-              {isVisible ? (
-                <Eye className="ml-auto h-3 w-3 text-zinc-500" />
-              ) : (
-                <EyeOff className="ml-auto h-3 w-3 text-zinc-600" />
-              )}
-            </button>
-          )
-        })}
+    <div className={`absolute bottom-4 right-4 z-10 rounded-lg border border-zinc-800 bg-zinc-900/95 shadow-xl backdrop-blur transition-all duration-300 ${isCollapsed ? 'p-2' : 'p-3 w-56'}`}>
+      <div 
+        className="flex cursor-pointer items-center justify-between"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+          <Layers className="h-3.5 w-3.5 text-zinc-500" />
+          {!isCollapsed && <span>Toggle Visibility</span>}
+        </div>
+        <button className="text-zinc-500 hover:text-zinc-300">
+          {isCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
       </div>
+      
+      {!isCollapsed && (
+        <div className="mt-3 grid gap-1">
+          {items.map((item) => {
+            const isVisible = visibility[item.type]
+            return (
+              <button
+                key={item.label}
+                onClick={() => onToggle(item.type)}
+                className={`flex items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-zinc-800 ${
+                  isVisible ? '' : 'opacity-40'
+                }`}
+              >
+                <span className={isVisible ? item.activeColor : item.color}>
+                  {item.icon}
+                </span>
+                <span className={`text-xs ${isVisible ? 'text-zinc-200' : 'text-zinc-500 font-medium'}`}>
+                  {item.label}
+                </span>
+                {isVisible ? (
+                  <Eye className="ml-auto h-3.5 w-3.5 text-zinc-600" />
+                ) : (
+                  <EyeOff className="ml-auto h-3.5 w-3.5 text-zinc-700" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

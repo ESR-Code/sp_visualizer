@@ -233,6 +233,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
           }}
           className="!border-zinc-700 !bg-zinc-900"
           maskColor="rgba(0, 0, 0, 0.7)"
+          position="top-right"
         />
       </ReactFlow>
       <Legend visibility={visibility} onToggle={onToggleVisibility} />
