@@ -135,6 +135,7 @@ function TriggerNodeComponent({ id, data, selected }: NodeProps) {
         className={`!h-2 !w-2 !border-2 !bg-zinc-900 ${
           isDisabled ? '!border-zinc-700' : '!border-orange-400'
         }`}
+        isConnectable={false}
       />
       <Handle
         type="source"
@@ -143,6 +144,7 @@ function TriggerNodeComponent({ id, data, selected }: NodeProps) {
         className={`!h-2 !w-2 !border-2 !bg-zinc-900 ${
           isDisabled ? '!border-zinc-700' : '!border-green-400'
         }`}
+        isConnectable={false}
       />
     </div>
   )

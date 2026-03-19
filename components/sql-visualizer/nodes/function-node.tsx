@@ -95,12 +95,14 @@ function FunctionNodeComponent({ id, data, selected }: NodeProps) {
         position={Position.Left}
         id={`${func.name}-target`}
         className="!h-2 !w-2 !border-2 !border-orange-400 !bg-zinc-900"
+        isConnectable={false}
       />
       <Handle
         type="source"
         position={Position.Right}
         id={`${func.name}-source`}
         className="!h-2 !w-2 !border-2 !border-green-400 !bg-zinc-900"
+        isConnectable={false}
       />
     </div>
   )

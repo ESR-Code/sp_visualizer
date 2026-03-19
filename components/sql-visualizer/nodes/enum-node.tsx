@@ -93,6 +93,7 @@ function EnumNodeComponent({ id, data, selected }: NodeProps) {
         position={Position.Right}
         id={`${enumData.name}-source`}
         className="!h-2 !w-2 !border-2 !border-purple-400 !bg-zinc-900"
+        isConnectable={false}
       />
     </div>
   )

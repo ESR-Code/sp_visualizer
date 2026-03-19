@@ -90,16 +90,15 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
             key={column.name}
             className="relative flex items-center gap-2 px-3 py-1.5 text-sm"
           >
-            {/* Target handle for incoming foreign keys */}
-            {column.isPrimaryKey && (
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={`${table.name}-${column.name}-target`}
-                className="!h-2 !w-2 !border-2 !border-blue-400 !bg-zinc-900"
-                style={{ top: '50%' }}
-              />
-            )}
+            {/* Target handle - always present so FK edges can connect */}
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={`${table.name}-${column.name}-target`}
+              className="!h-2 !w-2 !border-2 !border-blue-400 !bg-zinc-900"
+              style={{ top: '50%' }}
+              isConnectable={false}
+            />
             
             <div className="flex items-center gap-1.5">
               {column.isPrimaryKey && <Key className="h-3 w-3 text-amber-400" />}
@@ -114,32 +113,33 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
               {column.enumType || column.type}
             </span>
 
-            {/* Source handle for outgoing foreign keys */}
-            {column.references && (
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={`${table.name}-${column.name}-source`}
-                className="!h-2 !w-2 !border-2 !border-blue-400 !bg-zinc-900"
-                style={{ top: '50%' }}
-              />
-            )}
+            {/* Source handle - always present so FK edges can connect */}
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`${table.name}-${column.name}-source`}
+              className="!h-2 !w-2 !border-2 !border-blue-400 !bg-zinc-900"
+              style={{ top: '50%' }}
+              isConnectable={false}
+            />
           </div>
         ))}
       </div>
 
-      {/* Connection handles for triggers and policies */}
+      {/* Connection handles for triggers, policies, enums */}
       <Handle
         type="target"
         position={Position.Top}
         id={`${table.name}-trigger-target`}
         className="!h-2 !w-2 !border-2 !border-orange-400 !bg-zinc-900"
+        isConnectable={false}
       />
       <Handle
         type="target"
         position={Position.Bottom}
         id={`${table.name}-policy-target`}
         className="!h-2 !w-2 !border-2 !border-red-400 !bg-zinc-900"
+        isConnectable={false}
       />
       <Handle
         type="target"
@@ -147,6 +147,7 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         id={`${table.name}-enum-target`}
         className="!-left-1 !h-2 !w-2 !border-2 !border-purple-400 !bg-zinc-900"
         style={{ top: '50%' }}
+        isConnectable={false}
       />
     </div>
   )

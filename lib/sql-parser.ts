@@ -25,25 +25,44 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
   const tables: ParsedTable[] = []
   const foreignKeys: ForeignKeyRelation[] = []
   
-  // Match CREATE TABLE statements
-  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)\s*(?:PARTITION\s+BY\s+[\s\S]*?)?;/gi
+  // Match CREATE TABLE statements - use a function to find the balanced closing paren
+  const tableStartRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(/gi
   
-  let match
-  while ((match = tableRegex.exec(sql)) !== null) {
-    const schema = match[1] || 'public'
-    const tableName = match[2]
-    const columnsBlock = match[3]
+  let startMatch
+  while ((startMatch = tableStartRegex.exec(sql)) !== null) {
+    const schema = startMatch[1] || 'public'
+    const tableName = startMatch[2]
     
+    // Find balanced closing parenthesis
+    const startIdx = tableStartRegex.lastIndex
+    let depth = 1
+    let i = startIdx
+    while (i < sql.length && depth > 0) {
+      if (sql[i] === '(') depth++
+      else if (sql[i] === ')') depth--
+      i++
+    }
+    
+    if (depth !== 0) continue
+    
+    const columnsBlock = sql.substring(startIdx, i - 1)
     const columns: Column[] = []
     
-    // Parse individual column definitions
-    const lines = columnsBlock.split(',').map(l => l.trim()).filter(l => l.length > 0)
+    // Split columns by comma, but respect parentheses depth
+    const columnLines = splitByCommaRespectingParens(columnsBlock)
     
-    for (const line of lines) {
-      // Skip constraint definitions
-      if (/^\s*(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|CONSTRAINT)/i.test(line)) {
-        // Check for table-level foreign key constraints
-        const fkMatch = line.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
+    for (const line of columnLines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      
+      // Skip constraint definitions but extract FK info
+      if (/^\s*(PRIMARY\s+KEY|UNIQUE|CHECK)\s*\(/i.test(trimmed)) {
+        continue
+      }
+      
+      // Table-level CONSTRAINT ... FOREIGN KEY
+      if (/^\s*(CONSTRAINT\s+|FOREIGN\s+KEY)/i.test(trimmed)) {
+        const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
         if (fkMatch) {
           foreignKeys.push({
             id: generateId('fk'),
@@ -56,31 +75,51 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
         continue
       }
       
-      // Parse column: name type [constraints...]
-      const colMatch = line.match(/^["']?([^"'\s]+)["']?\s+([^"'\s]+(?:\s*\([^)]+\))?(?:\s*\[\s*\])?)/i)
+      // Parse column: "name" type [constraints...]
+      const colMatch = trimmed.match(/^["']?([^"'\s]+)["']?\s+(.+)$/i)
       if (!colMatch) continue
       
       const colName = colMatch[1]
-      const colType = colMatch[2]
+      const restOfLine = colMatch[2]
+      
+      // Extract type - handle complex types like "timestamp with time zone", "character varying(255)"
+      let colType = ''
+      const typePatterns = [
+        /^((?:bigint|smallint|integer|int|serial|bigserial|boolean|bool|text|uuid|date|jsonb?|bytea|real|float|double\s+precision|numeric|decimal)(?:\s*\([^)]*\))?(?:\s*\[\s*\])?)/i,
+        /^(character\s+varying\s*\([^)]*\))/i,
+        /^(timestamp\s+with(?:out)?\s+time\s+zone)/i,
+        /^(time\s+with(?:out)?\s+time\s+zone)/i,
+        /^(["']?\w+["']?(?:\.["']?\w+["']?)?(?:\s*\([^)]*\))?(?:\s*\[\s*\])?)/i,
+      ]
+      
+      for (const pattern of typePatterns) {
+        const typeMatch = restOfLine.match(pattern)
+        if (typeMatch) {
+          colType = typeMatch[1].replace(/["']/g, '')
+          break
+        }
+      }
+      
+      if (!colType) continue
       
       const column: Column = {
         name: colName,
         type: colType,
-        isPrimaryKey: /PRIMARY\s+KEY/i.test(line),
-        isNotNull: /NOT\s+NULL/i.test(line) || /PRIMARY\s+KEY/i.test(line),
+        isPrimaryKey: /PRIMARY\s+KEY/i.test(restOfLine),
+        isNotNull: /NOT\s+NULL/i.test(restOfLine) || /PRIMARY\s+KEY/i.test(restOfLine),
         defaultValue: undefined,
         references: undefined,
         enumType: undefined,
       }
       
       // Check for DEFAULT value
-      const defaultMatch = line.match(/DEFAULT\s+([^,\s]+(?:\([^)]*\))?)/i)
+      const defaultMatch = restOfLine.match(/DEFAULT\s+([^,]+?)(?:\s+(?:NOT\s+NULL|NULL|PRIMARY|UNIQUE|REFERENCES|CHECK|CONSTRAINT)|\s*$)/i)
       if (defaultMatch) {
-        column.defaultValue = defaultMatch[1]
+        column.defaultValue = defaultMatch[1].trim()
       }
       
       // Check for inline REFERENCES
-      const refMatch = line.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
+      const refMatch = restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
       if (refMatch) {
         column.references = {
           table: refMatch[2],
@@ -108,6 +147,44 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
   
   return { tables, foreignKeys }
 }
+
+// Split a string by commas while respecting parentheses nesting
+function splitByCommaRespectingParens(input: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let current = ''
+  let inSingleQuote = false
+  let inDoubleQuote = false
+  
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]
+    
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+    } else if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+    }
+    
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (ch === '(') depth++
+      else if (ch === ')') depth--
+      else if (ch === ',' && depth === 0) {
+        parts.push(current)
+        current = ''
+        continue
+      }
+    }
+    
+    current += ch
+  }
+  
+  if (current.trim()) {
+    parts.push(current)
+  }
+  
+  return parts
+}
+
 
 // Parse CREATE TYPE ... AS ENUM statements
 function parseEnums(sql: string): ParsedEnum[] {
@@ -278,6 +355,50 @@ function parseDisabledTriggers(sql: string, triggers: ParsedTrigger[]) {
   }
 }
 
+// Parse ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY statements
+function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignKeys: ForeignKeyRelation[]) {
+  // Match: ALTER TABLE [ONLY] [schema.]table ADD [CONSTRAINT name] FOREIGN KEY (col) REFERENCES [schema.]table(col) [ON ...]
+  const alterFkRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ADD\s+(?:CONSTRAINT\s+["']?[^"'\s]+["']?\s+)?FOREIGN\s+KEY\s*\(\s*["']?([^"'\s),]+)["']?\s*\)\s*REFERENCES\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(\s*["']?([^"'\s)]+)["']?\s*\)/gi
+  
+  let match
+  while ((match = alterFkRegex.exec(sql)) !== null) {
+    const sourceTable = match[2]
+    const sourceColumn = match[3]
+    const targetTable = match[5]
+    const targetColumn = match[6]
+    
+    // Check for duplicates (same FK might already exist from inline definition)
+    const isDuplicate = foreignKeys.some(
+      fk => fk.sourceTable === sourceTable && 
+            fk.sourceColumn === sourceColumn && 
+            fk.targetTable === targetTable && 
+            fk.targetColumn === targetColumn
+    )
+    
+    if (!isDuplicate) {
+      foreignKeys.push({
+        id: generateId('fk'),
+        sourceTable,
+        sourceColumn,
+        targetTable,
+        targetColumn,
+      })
+    }
+    
+    // Update column reference metadata on the table
+    const table = tables.find(t => t.name === sourceTable)
+    if (table) {
+      const column = table.columns.find(c => c.name === sourceColumn)
+      if (column && !column.references) {
+        column.references = {
+          table: targetTable,
+          column: targetColumn,
+        }
+      }
+    }
+  }
+}
+
 // Find enum usages in table columns
 function findEnumUsages(tables: ParsedTable[], enums: ParsedEnum[]): EnumUsage[] {
   const enumUsages: EnumUsage[] = []
@@ -285,12 +406,15 @@ function findEnumUsages(tables: ParsedTable[], enums: ParsedEnum[]): EnumUsage[]
   
   for (const table of tables) {
     for (const column of table.columns) {
+      // Strip schema prefix for matching (e.g. "public.user_status" → "user_status")
       const colTypeLower = column.type.toLowerCase()
-      if (enumNames.has(colTypeLower)) {
+      const colTypeBaseName = colTypeLower.includes('.') ? colTypeLower.split('.').pop()! : colTypeLower
+      
+      if (enumNames.has(colTypeBaseName) || enumNames.has(colTypeLower)) {
         column.enumType = column.type
         enumUsages.push({
           id: generateId('enum-usage'),
-          enumName: column.type,
+          enumName: colTypeBaseName,
           tableName: table.name,
           columnName: column.name,
         })
@@ -355,6 +479,9 @@ export function parseSQL(sql: string): ParsedSchema {
   
   // Mark disabled triggers
   parseDisabledTriggers(cleanedSql, triggers)
+  
+  // Parse ALTER TABLE ... ADD FOREIGN KEY (out-of-line FK definitions)
+  parseAlterTableForeignKeys(cleanedSql, tables, foreignKeys)
   
   const enumUsages = findEnumUsages(tables, enums)
   const functionCalls = findFunctionCalls(functions)

@@ -128,6 +128,7 @@ function PolicyNodeComponent({ id, data, selected }: NodeProps) {
         position={Position.Top}
         id={`${policy.name}-table-source`}
         className="!h-2 !w-2 !border-2 !border-red-400 !bg-zinc-900"
+        isConnectable={false}
       />
     </div>
   )

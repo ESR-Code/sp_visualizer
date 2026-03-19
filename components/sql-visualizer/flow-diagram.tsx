@@ -76,7 +76,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     }
 
     const { nodes, edges } = generateNodesAndEdges(schema)
-    const layoutedNodes = applyDagreLayout(nodes, edges, 'TB')
+    const layoutedNodes = applyDagreLayout(nodes, edges, 'LR')
 
     return { initialNodes: layoutedNodes, initialEdges: edges }
   }, [schema])
@@ -111,6 +111,13 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   // Filter nodes based on visibility and solo mode
   const filteredNodes = useMemo(() => {
     return nodes.filter((node) => {
+      // Always hide group nodes when their children are hidden, show otherwise
+      if (node.type === 'group') {
+        if (!soloRelatedNodeIds) return visibility.group
+        // In solo mode, hide the group unless a child is visible
+        return false
+      }
+      
       // If in solo mode, only show the solo node and its related nodes
       if (soloRelatedNodeIds && !soloRelatedNodeIds.has(node.id)) {
         return false
@@ -150,7 +157,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   const onResetLayout = useCallback(() => {
     if (!schema) return
     const { nodes: newNodes, edges: newEdges } = generateNodesAndEdges(schema)
-    const layoutedNodes = applyDagreLayout(newNodes, newEdges, 'TB')
+    const layoutedNodes = applyDagreLayout(newNodes, newEdges, 'LR')
     setNodes(layoutedNodes)
     setEdges(newEdges)
   }, [schema, setNodes, setEdges])

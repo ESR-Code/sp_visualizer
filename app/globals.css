@@ -123,3 +123,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Fix node dragging: handles intercept mouse events */
+.react-flow__handle {
+  pointer-events: none !important;
+}
