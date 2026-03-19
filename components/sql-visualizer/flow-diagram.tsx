@@ -30,6 +30,11 @@ const nodeTypes = {
   function: FunctionNode,
   trigger: TriggerNode,
   policy: PolicyNode,
+  group: ({ data }: { data: { label: string } }) => (
+    <div className="h-full w-full rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/40 p-4">
+      <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">{data.label}</div>
+    </div>
+  ),
 }
 
 interface FlowDiagramProps {
@@ -45,6 +50,7 @@ const defaultVisibility: VisibilityState = {
   trigger: true,
   policy: true,
   foreignKey: true,
+  group: true,
 }
 
 // Edge type mappings

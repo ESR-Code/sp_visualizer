@@ -200,9 +200,20 @@ export function applyDagreLayout(
 ): Node[] {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: direction, nodesep: 80, ranksep: 100 })
+  g.setGraph({ rankdir: direction, nodesep: 100, ranksep: 120 })
 
-  nodes.forEach((node) => {
+  // Find connected versus isolated nodes
+  const connectedNodeIds = new Set<string>()
+  edges.forEach((edge) => {
+    connectedNodeIds.add(edge.source)
+    connectedNodeIds.add(edge.target)
+  })
+
+  const connectedNodes = nodes.filter((node) => connectedNodeIds.has(node.id))
+  const isolatedNodes = nodes.filter((node) => !connectedNodeIds.has(node.id))
+
+  // Layout connected nodes using Dagre
+  connectedNodes.forEach((node) => {
     const dimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
       width: 200,
       height: 100,
@@ -216,7 +227,7 @@ export function applyDagreLayout(
 
   dagre.layout(g)
 
-  return nodes.map((node) => {
+  const results: Node[] = connectedNodes.map((node) => {
     const nodeWithPosition = g.node(node.id)
     const dimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
       width: 200,
@@ -231,4 +242,57 @@ export function applyDagreLayout(
       },
     }
   })
+
+  // Arrange isolated nodes in a separate section below the main layout
+  if (isolatedNodes.length > 0) {
+    const maxY = results.length > 0 
+      ? Math.max(...results.map(n => n.position.y + (NODE_DIMENSIONS[n.type as keyof typeof NODE_DIMENSIONS]?.height || 200)))
+      : 0
+    const minX = results.length > 0 ? Math.min(...results.map(n => n.position.x)) : 0
+    const maxX = results.length > 0 
+      ? Math.max(...results.map(n => n.position.x + (NODE_DIMENSIONS[n.type as keyof typeof NODE_DIMENSIONS]?.width || 200)))
+      : 800
+
+    const sectionY = maxY + 200
+    const itemGap = 50
+    const groupPadding = 60
+    const itemsPerRow = Math.max(3, Math.floor((maxX - minX + groupPadding * 2) / 260))
+    const groupId = 'isolated-group'
+
+    // Calculate group dimensions first
+    const rows = Math.ceil(isolatedNodes.length / itemsPerRow)
+    const maxHeight = 140
+    const groupWidth = Math.max(groupPadding * 2 + itemsPerRow * 200 + (itemsPerRow - 1) * itemGap, 800)
+    const groupHeight = groupPadding + 50 + rows * (maxHeight + itemGap)
+
+    // IMPORTANT: Push the group node FIRST (parent must come before children in React Flow)
+    results.push({
+      id: groupId,
+      type: 'group',
+      data: { label: 'Isolated Components (No Relationships)' },
+      position: { x: minX, y: sectionY },
+      style: { width: groupWidth, height: groupHeight },
+    })
+
+    // Then push isolated nodes as children of the group
+    isolatedNodes.forEach((node, index) => {
+      const row = Math.floor(index / itemsPerRow)
+      const col = index % itemsPerRow
+      const dims = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
+        width: 200,
+        height: 100,
+      }
+
+      results.push({
+        ...node,
+        parentId: groupId,
+        position: {
+          x: groupPadding + col * (dims.width + itemGap),
+          y: 50 + row * (dims.height + itemGap),
+        },
+      })
+    })
+  }
+
+  return results
 }

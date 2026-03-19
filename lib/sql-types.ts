@@ -96,7 +96,7 @@ export interface ParsedSchema {
 }
 
 // Node types for React Flow
-export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy'
+export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'group'
 
 export interface BaseNodeData {
   label: string

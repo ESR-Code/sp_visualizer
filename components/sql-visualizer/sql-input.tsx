@@ -65,7 +65,8 @@ export function SqlInput({ value, onChange, onVisualize, onClear }: SqlInputProp
       <div className="relative flex-1 overflow-hidden p-2">
         <div 
           ref={highlightRef}
-          className="absolute inset-2 overflow-auto whitespace-pre rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm pointer-events-none"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          className="absolute inset-2 overflow-auto whitespace-pre rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm pointer-events-none [&::-webkit-scrollbar]:display-none"
         >
           {highlightSQL(value)}
           {/* Extra space at bottom to match textarea */}
@@ -77,7 +78,7 @@ export function SqlInput({ value, onChange, onVisualize, onClear }: SqlInputProp
           onChange={(e) => onChange(e.target.value)}
           onScroll={handleScroll}
           placeholder={`-- Paste your SQL here...`}
-          className="absolute inset-2 h-full w-full resize-none rounded-md border border-transparent bg-transparent p-3 font-mono text-sm text-transparent caret-white focus:outline-none overflow-auto"
+          className="absolute inset-2 h-full w-full resize-none rounded-md border border-transparent bg-transparent p-3 font-mono text-sm text-transparent caret-zinc-100 focus:outline-none overflow-auto custom-scrollbar"
           spellCheck={false}
         />
       </div>
