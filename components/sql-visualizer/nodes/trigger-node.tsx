@@ -109,6 +109,14 @@ function TriggerNodeComponent({ id, data, selected }: NodeProps) {
           </span>
           <span className="text-zinc-400">{trigger.events.join(' | ')}</span>
         </div>
+        
+        <div className="text-zinc-400">
+          <span className="text-zinc-500">fields: </span>
+          <span className={isDisabled ? 'text-zinc-600' : 'text-orange-100 italic'}>
+            {trigger.updatedColumns ? trigger.updatedColumns.join(', ') : 'general'}
+          </span>
+        </div>
+
         <div className="text-zinc-400">
           <span className="text-zinc-500">on: </span>
           <span className={isDisabled ? 'text-zinc-500' : 'text-orange-200'}>{trigger.tableName}</span>

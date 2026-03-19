@@ -188,11 +188,22 @@ function parseTriggers(sql: string): ParsedTrigger[] {
     const triggerName = match[1]
     const timing = match[2].replace(/\s+/g, ' ').toUpperCase() as ParsedTrigger['timing']
     
-    // Parse multiple events
+    // Parse multiple events and updated columns
     const eventText = match[3].toUpperCase()
     const events: ParsedTrigger['events'] = []
+    const updatedColumns: string[] = []
+    
     if (eventText.includes('INSERT')) events.push('INSERT')
-    if (eventText.includes('UPDATE')) events.push('UPDATE')
+    if (eventText.includes('UPDATE')) {
+      events.push('UPDATE')
+      // Extract columns from UPDATE OF
+      const updateOfMatch = eventText.match(/UPDATE\s+OF\s+([\w\s,"']+)/i)
+      if (updateOfMatch) {
+        updateOfMatch[1].split(',').forEach(col => {
+          updatedColumns.push(col.trim().replace(/["']/g, ''))
+        })
+      }
+    }
     if (eventText.includes('DELETE')) events.push('DELETE')
     
     const tableSchema = match[4] || 'public'
@@ -209,6 +220,7 @@ function parseTriggers(sql: string): ParsedTrigger[] {
       tableSchema,
       functionName: funcName,
       functionSchema: funcSchema,
+      updatedColumns: updatedColumns.length > 0 ? updatedColumns : undefined,
     })
   }
   

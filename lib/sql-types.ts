@@ -46,6 +46,7 @@ export interface ParsedTrigger {
   functionName: string
   functionSchema: string
   isDisabled?: boolean
+  updatedColumns?: string[]
 }
 
 export interface ParsedPolicy {
