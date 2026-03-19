@@ -25,7 +25,7 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
   const foreignKeys: ForeignKeyRelation[] = []
   
   // Match CREATE TABLE statements
-  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(([\s\S]*?)\)\s*;/gi
+  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)\s*(?:PARTITION\s+BY\s+[\s\S]*?)?;/gi
   
   let match
   while ((match = tableRegex.exec(sql)) !== null) {
@@ -56,7 +56,7 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       }
       
       // Parse column: name type [constraints...]
-      const colMatch = line.match(/^["']?(\w+)["']?\s+(\w+(?:\s*\([^)]+\))?(?:\s*\[\s*\])?)/i)
+      const colMatch = line.match(/^["']?([^"'\s]+)["']?\s+([^"'\s]+(?:\s*\([^)]+\))?(?:\s*\[\s*\])?)/i)
       if (!colMatch) continue
       
       const colName = colMatch[1]
@@ -112,7 +112,7 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
 function parseEnums(sql: string): ParsedEnum[] {
   const enums: ParsedEnum[] = []
   
-  const enumRegex = /CREATE\s+TYPE\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s+AS\s+ENUM\s*\(([\s\S]*?)\)\s*;/gi
+  const enumRegex = /CREATE\s+TYPE\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s+AS\s+ENUM\s*\(([\s\S]*?)\)\s*;/gi
   
   let match
   while ((match = enumRegex.exec(sql)) !== null) {
@@ -141,15 +141,27 @@ function parseEnums(sql: string): ParsedEnum[] {
 function parseFunctions(sql: string): ParsedFunction[] {
   const functions: ParsedFunction[] = []
   
-  // Match CREATE FUNCTION (simplified regex to capture function signature)
-  const funcRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(([\s\S]*?)\)\s*RETURNS\s+(\w+(?:\s+\w+)*)/gi
+  // Match CREATE FUNCTION (supports quoted identifiers and return types)
+  const funcRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)\s*RETURNS\s+["']?([^"';]+?)["']?(?=$|\s|;|LANGUAGE|AS)/gi
   
   let match
   while ((match = funcRegex.exec(sql)) !== null) {
     const schema = match[1] || 'public'
     const funcName = match[2]
     const params = match[3].trim()
-    const returnType = match[4]
+    let returnType = match[4].trim()
+    
+    // Find body to show in "View SQL"
+    let body = ''
+    // Search for body after the signature
+    const remainingSql = sql.substring(funcRegex.lastIndex - match[0].length)
+    const nextStatementIndex = remainingSql.substring(match[0].length).search(/CREATE\s+(TABLE|FUNCTION|TRIGGER|POLICY|TYPE)/i)
+    const searchLimit = nextStatementIndex !== -1 ? nextStatementIndex + match[0].length : remainingSql.length
+    const bodyMatch = remainingSql.substring(0, searchLimit).match(/AS\s+(\$\$[\s\S]*?\$\$|'[\s\S]*?')/i)
+    
+    if (bodyMatch) {
+      body = bodyMatch[1].replace(/^\$\$|^\$|\$\$$|\$$/g, '').trim()
+    }
     
     functions.push({
       id: generateId('func'),
@@ -157,7 +169,7 @@ function parseFunctions(sql: string): ParsedFunction[] {
       schema,
       parameters: params,
       returnType,
-      body: '', // We don't need to parse the full body for visualization
+      body,
     })
   }
   
@@ -168,21 +180,24 @@ function parseFunctions(sql: string): ParsedFunction[] {
 function parseTriggers(sql: string): ParsedTrigger[] {
   const triggers: ParsedTrigger[] = []
   
-  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+["']?(\w+)["']?\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+(INSERT|UPDATE|DELETE)(?:\s+OR\s+(INSERT|UPDATE|DELETE))?(?:\s+OR\s+(INSERT|UPDATE|DELETE))?\s+ON\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s+[\s\S]*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*\)/gi
+  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+["']?([^"'\s]+)["']?\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+((?:INSERT|UPDATE|DELETE)(?:\s+OR\s+(?:INSERT|UPDATE|DELETE))*)\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+[\s\S]*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)/gi
   
   let match
   while ((match = triggerRegex.exec(sql)) !== null) {
     const triggerName = match[1]
     const timing = match[2].replace(/\s+/g, ' ').toUpperCase() as ParsedTrigger['timing']
-    const events: ParsedTrigger['events'] = [match[3].toUpperCase() as 'INSERT' | 'UPDATE' | 'DELETE']
     
-    if (match[4]) events.push(match[4].toUpperCase() as 'INSERT' | 'UPDATE' | 'DELETE')
-    if (match[5]) events.push(match[5].toUpperCase() as 'INSERT' | 'UPDATE' | 'DELETE')
+    // Parse multiple events
+    const eventText = match[3].toUpperCase()
+    const events: ParsedTrigger['events'] = []
+    if (eventText.includes('INSERT')) events.push('INSERT')
+    if (eventText.includes('UPDATE')) events.push('UPDATE')
+    if (eventText.includes('DELETE')) events.push('DELETE')
     
-    const tableSchema = match[6] || 'public'
-    const tableName = match[7]
-    const funcSchema = match[8] || 'public'
-    const funcName = match[9]
+    const tableSchema = match[4] || 'public'
+    const tableName = match[5]
+    const funcSchema = match[6] || 'public'
+    const funcName = match[7]
     
     triggers.push({
       id: generateId('trigger'),
@@ -203,7 +218,7 @@ function parseTriggers(sql: string): ParsedTrigger[] {
 function parsePolicies(sql: string): ParsedPolicy[] {
   const policies: ParsedPolicy[] = []
   
-  const policyRegex = /CREATE\s+POLICY\s+["']?(\w+)["']?\s+ON\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*(?:AS\s+(PERMISSIVE|RESTRICTIVE)\s+)?(?:FOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\s+)?(?:TO\s+([\w,\s]+)\s+)?(?:USING\s*\(([\s\S]*?)\))?(?:\s+WITH\s+CHECK\s*\(([\s\S]*?)\))?\s*;/gi
+  const policyRegex = /CREATE\s+POLICY\s+["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s*(?:AS\s+(PERMISSIVE|RESTRICTIVE)\s+)?(?:FOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\s+)?(?:TO\s+([\w,"'\s,]+)\s+)?(?:USING\s*\(([\s\S]*?)\))?(?:\s+WITH\s+CHECK\s*\(([\s\S]*?)\))?\s*;/gi
   
   let match
   while ((match = policyRegex.exec(sql)) !== null) {
