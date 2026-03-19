@@ -84,6 +84,14 @@ export interface FunctionCall {
   calleeSchema: string
 }
 
+export interface ParsedView {
+  id: string
+  name: string
+  schema: string
+  securityInvoker: boolean
+  code: string
+}
+
 export interface ParsedSchema {
   tables: ParsedTable[]
   enums: ParsedEnum[]
@@ -93,13 +101,17 @@ export interface ParsedSchema {
   foreignKeys: ForeignKeyRelation[]
   enumUsages: EnumUsage[]
   functionCalls: FunctionCall[]
+  views: ParsedView[]
 }
 
 // Node types for React Flow
-export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'group'
+export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'group' | 'view'
 
 export interface BaseNodeData {
   label: string
+  onViewCode?: (title: string, code: string) => void
+  onSoloToggle?: (id: string, relatedIds: Set<string>) => void
+  isSolo?: boolean
 }
 
 export interface TableNodeData extends BaseNodeData {
@@ -120,6 +132,10 @@ export interface TriggerNodeData extends BaseNodeData {
 
 export interface PolicyNodeData extends BaseNodeData {
   policy: ParsedPolicy
+}
+
+export interface ViewNodeData extends BaseNodeData {
+  view: ParsedView
 }
 
 // Edge types

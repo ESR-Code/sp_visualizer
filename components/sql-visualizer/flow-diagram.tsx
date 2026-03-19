@@ -19,6 +19,7 @@ import { EnumNode } from './nodes/enum-node'
 import { FunctionNode } from './nodes/function-node'
 import { TriggerNode } from './nodes/trigger-node'
 import { PolicyNode } from './nodes/policy-node'
+import { ViewNode } from './nodes/view-node'
 import { Legend, type VisibilityState } from './legend'
 import { CodeModal } from './code-modal'
 import type { ParsedSchema, NodeType } from '@/lib/sql-types'
@@ -30,6 +31,7 @@ const nodeTypes = {
   function: FunctionNode,
   trigger: TriggerNode,
   policy: PolicyNode,
+  view: ViewNode,
   group: ({ data }: { data: { label: string } }) => (
     <div className="h-full w-full rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/40 p-4">
       <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">{data.label}</div>
@@ -49,6 +51,7 @@ const defaultVisibility: VisibilityState = {
   function: true,
   trigger: true,
   policy: true,
+  view: true,
   foreignKey: true,
   group: true,
 }
@@ -191,6 +194,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
         function: false,
         trigger: false,
         policy: false,
+        view: false,
         foreignKey: false,
         group: true,
         [type]: true,
@@ -207,7 +211,8 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     schema.enums.length === 0 &&
     schema.functions.length === 0 &&
     schema.triggers.length === 0 &&
-    schema.policies.length === 0
+    schema.policies.length === 0 &&
+    schema.views.length === 0
   )
 
   if (isEmpty) {
@@ -269,6 +274,8 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
                 return '#f97316'
               case 'policy':
                 return '#ef4444'
+              case 'view':
+                return '#14b8a6'
               default:
                 return '#71717a'
             }

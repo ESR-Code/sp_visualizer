@@ -64,6 +64,16 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
     })
   })
 
+  // Create view nodes
+  schema.views.forEach((view) => {
+    nodes.push({
+      id: view.id,
+      type: 'view',
+      position: { x: 0, y: 0 },
+      data: { label: view.name, view },
+    })
+  })
+
   // Create edges for foreign keys
   schema.foreignKeys.forEach((fk) => {
     const sourceTable = schema.tables.find((t) => t.name === fk.sourceTable)

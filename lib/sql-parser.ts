@@ -9,6 +9,7 @@ import {
   EnumUsage,
   FunctionCall,
   Column,
+  ParsedView,
 } from './sql-types'
 
 // Generate unique IDs
@@ -462,6 +463,32 @@ function findFunctionCalls(functions: ParsedFunction[]): FunctionCall[] {
   return functionCalls
 }
 
+// Parse views
+function parseViews(sql: string): ParsedView[] {
+  const views: ParsedView[] = []
+  
+  const viewRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?(?:\s+WITH\s*\([^)]+\))?\s+AS\s+([\s\S]*?)(?=(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|TRIGGER|POLICY|TYPE)|ALTER\s+|DROP\s+|$))/gi
+  
+  // A more precise regex to capture the WITH clause without breaking the broader AS body
+  const viewRegexWithClause = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?(?:\s+WITH\s*\(([^)]+)\))?\s+AS\s+([\s\S]*?)(?=(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|TRIGGER|POLICY|TYPE)|ALTER\s+|DROP\s+|$))/gi
+  
+  let match
+  while ((match = viewRegexWithClause.exec(sql)) !== null) {
+    const rawWithClause = match[3] || ''
+    const isSecurityInvoker = /security_invoker\s*=\s*['"]?(on|true|1)['"]?/i.test(rawWithClause)
+
+    views.push({
+      id: generateId('view'),
+      schema: match[1] || 'public',
+      name: match[2],
+      securityInvoker: isSecurityInvoker,
+      code: match[0].trim(),
+    })
+  }
+
+  return views
+}
+
 // Main parser function
 export function parseSQL(sql: string): ParsedSchema {
   resetIdCounter()
@@ -476,6 +503,7 @@ export function parseSQL(sql: string): ParsedSchema {
   const functions = parseFunctions(cleanedSql)
   const triggers = parseTriggers(cleanedSql)
   const policies = parsePolicies(cleanedSql)
+  const views = parseViews(cleanedSql)
   
   // Mark disabled triggers
   parseDisabledTriggers(cleanedSql, triggers)
@@ -495,6 +523,7 @@ export function parseSQL(sql: string): ParsedSchema {
     foreignKeys,
     enumUsages,
     functionCalls,
+    views,
   }
 }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Table2, List, Code2, Zap, Shield, Link, Eye, EyeOff, ChevronDown, ChevronUp, Layers } from 'lucide-react'
+import { Table2, List, Code2, Zap as TriggerIcon, Shield, Link, Eye, EyeOff, ChevronDown, ChevronUp, Layers } from 'lucide-react'
 import type { NodeType } from '@/lib/sql-types'
 
 interface LegendItem {
@@ -16,8 +16,9 @@ const items: LegendItem[] = [
   { icon: <Table2 className="h-3 w-3" />, label: 'Table', color: 'text-zinc-500', activeColor: 'text-blue-400', type: 'table' },
   { icon: <List className="h-3 w-3" />, label: 'Enum', color: 'text-zinc-500', activeColor: 'text-purple-400', type: 'enum' },
   { icon: <Code2 className="h-3 w-3" />, label: 'Function', color: 'text-zinc-500', activeColor: 'text-green-400', type: 'function' },
-  { icon: <Zap className="h-3 w-3" />, label: 'Trigger', color: 'text-zinc-500', activeColor: 'text-orange-400', type: 'trigger' },
+  { icon: <TriggerIcon className="h-3 w-3" />, label: 'Trigger', color: 'text-zinc-500', activeColor: 'text-orange-400', type: 'trigger' },
   { icon: <Shield className="h-3 w-3" />, label: 'Policy', color: 'text-zinc-500', activeColor: 'text-red-400', type: 'policy' },
+  { icon: <Eye className="h-3 w-3" />, label: 'View', color: 'text-zinc-500', activeColor: 'text-teal-400', type: 'view' },
   { icon: <Link className="h-3 w-3" />, label: 'Foreign Key', color: 'text-zinc-500', activeColor: 'text-blue-300', type: 'foreignKey' },
 ]
 
