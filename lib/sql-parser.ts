@@ -480,7 +480,7 @@ function parseViews(sql: string): ParsedView[] {
     
     // Naïve table dependency extraction
     const dependencies = new Set<string>()
-    const depRegex = /(?:FROM|JOIN)\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?/gi
+    const depRegex = /(?:FROM|JOIN)\s+[\(\s]*(?:["']?(\w+)["']?\.)?["']?(\w+)["']?/gi
     let depMatch
     while ((depMatch = depRegex.exec(asClause)) !== null) {
       if (depMatch[2]) {
