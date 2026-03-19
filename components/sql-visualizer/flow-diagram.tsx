@@ -10,9 +10,11 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  type ReactFlowInstance,
   ConnectionMode,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Search } from 'lucide-react'
 
 import { TableNode } from './nodes/table-node'
 import { EnumNode } from './nodes/enum-node'
@@ -67,6 +69,9 @@ const edgeTypeToNodeType: Record<string, NodeType | 'foreignKey'> = {
 }
 
 export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramProps) {
+  const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [visibility, setVisibility] = useState<VisibilityState>(defaultVisibility)
   const [preSoloVisibility, setPreSoloVisibility] = useState<VisibilityState | null>(null)
   const [soloCategory, setSoloCategory] = useState<NodeType | 'foreignKey' | null>(null)
@@ -240,9 +245,97 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     },
   }))
 
+  // Search logic
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    const query = searchQuery.toLowerCase()
+    return filteredNodes.filter(
+      (node) => 
+        (node.data.label as string)?.toLowerCase().includes(query) || 
+        node.type?.toLowerCase().includes(query)
+    )
+  }, [searchQuery, filteredNodes])
+
+  const handleNodeClickFromSearch = useCallback((node: Node) => {
+    if (!rfInstance) return
+    const { position, measured } = node
+    
+    // Target position is node pos + half width/height
+    let w = 200
+    let h = 100
+    if (measured && measured.width && measured.height) {
+      w = measured.width
+      h = measured.height
+    } else if (node.width && node.height) {
+      w = node.width
+      h = node.height
+    }
+    
+    const x = position.x + w / 2
+    const y = position.y + h / 2
+
+    rfInstance.setCenter(x, y, { duration: 800, zoom: 1.2 })
+    setSearchQuery('')
+  }, [rfInstance])
+
   return (
     <div className="relative h-full w-full">
+      {/* Search Bar UI */}
+      {!isEmpty && (
+        <div className="absolute left-1/2 top-4 z-20 w-80 -translate-x-1/2">
+          <div className="relative flex items-center shadow-lg">
+            <Search className="absolute left-3 h-4 w-4 text-zinc-400" />
+            <input
+               type="text"
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               onFocus={() => setIsSearchFocused(true)}
+               onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+               placeholder="Search nodes by name or type..."
+               className="w-full rounded-md border border-zinc-700 bg-zinc-800/95 py-2 pl-9 pr-4 text-sm text-zinc-200 outline-none backdrop-blur placeholder:text-zinc-500 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+            />
+          </div>
+          {searchQuery && isSearchFocused && (
+            <div className="mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-zinc-700 bg-zinc-800/95 py-1 shadow-lg backdrop-blur custom-scrollbar">
+              <div className="border-b border-zinc-700/50 px-3 py-1.5 text-xs font-medium text-zinc-400 mb-1">
+                 Found {searchResults.length} item{searchResults.length !== 1 ? 's' : ''}
+              </div>
+              {searchResults.length === 0 ? (
+                <div className="px-3 py-2 text-sm italic text-zinc-500">No matches found.</div>
+              ) : (
+                searchResults.map((node) => {
+                   let colorClass = 'text-zinc-500'
+                   let bgClass = 'bg-zinc-900'
+                   switch (node.type) {
+                     case 'table': colorClass = 'text-blue-400'; bgClass = 'bg-blue-400/10'; break
+                     case 'enum': colorClass = 'text-purple-400'; bgClass = 'bg-purple-400/10'; break
+                     case 'function': colorClass = 'text-green-400'; bgClass = 'bg-green-400/10'; break
+                     case 'trigger': colorClass = 'text-orange-400'; bgClass = 'bg-orange-400/10'; break
+                     case 'policy': colorClass = 'text-red-400'; bgClass = 'bg-red-400/10'; break
+                     case 'view': colorClass = 'text-teal-400'; bgClass = 'bg-teal-400/10'; break
+                   }
+                   
+                   return (
+                     <button
+                       key={node.id}
+                       onClick={() => handleNodeClickFromSearch(node)}
+                       className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-700/50"
+                     >
+                       <span className="truncate pr-3 text-sm text-zinc-200 font-medium">{node.data.label as string}</span>
+                       <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase font-bold tracking-wider ${colorClass} ${bgClass}`}>
+                         {node.type}
+                       </span>
+                     </button>
+                   )
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <ReactFlow
+        onInit={setRfInstance}
         nodes={nodesWithCallbacks}
         edges={filteredEdges}
         onNodesChange={onNodesChange}
