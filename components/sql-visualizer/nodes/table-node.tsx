@@ -5,11 +5,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Table2, Key, Link, Code2, Target } from 'lucide-react'
 import type { TableNodeData } from '@/lib/sql-types'
 
-interface TableNodeDataWithCallback extends TableNodeData {
-  onViewCode?: (title: string, code: string) => void
-  onSoloToggle?: (id: string) => void
-  isSolo?: boolean
-}
+
 
 function generateTableSQL(table: TableNodeData['table']): string {
   const lines: string[] = []
@@ -33,7 +29,7 @@ function generateTableSQL(table: TableNodeData['table']): string {
 }
 
 function TableNodeComponent({ id, data, selected }: NodeProps) {
-  const nodeData = data as any as TableNodeDataWithCallback
+  const nodeData = data as any as TableNodeData
   const { table, onViewCode, onSoloToggle, isSolo } = nodeData
 
   return (

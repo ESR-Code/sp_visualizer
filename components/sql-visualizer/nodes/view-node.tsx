@@ -1,27 +1,52 @@
 import { memo } from 'react'
-import { Handle, Position } from '@xyflow/react'
-import { Eye, Code } from 'lucide-react'
+import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Eye, Code, Target } from 'lucide-react'
 import type { ViewNodeData } from '@/lib/sql-types'
 
-function ViewNodeComponent({ data }: { data: ViewNodeData }) {
-  const { view, onViewCode } = data
+function ViewNodeComponent({ id, data, selected }: NodeProps) {
+  const nodeData = data as any as ViewNodeData
+  const { view, onViewCode, onSoloToggle, isSolo } = nodeData
 
   return (
-    <div className="w-[320px] rounded-lg border-2 border-teal-500/50 bg-zinc-950/90 shadow-xl backdrop-blur">
+    <div className={`w-[320px] rounded-lg border-2 bg-zinc-950/90 shadow-xl backdrop-blur transition-all ${
+      selected || isSolo ? 'border-teal-400 ring-2 ring-teal-400/30' : 'border-teal-500/50'
+    }`}>
       {/* Header */}
-      <div className="flex items-center gap-2 rounded-t-md bg-teal-500/10 px-3 py-2 border-b border-teal-500/20">
-        <Eye className="h-4 w-4 text-teal-400" />
+      <div className={`flex items-center gap-2 rounded-t-md px-3 py-2 border-b transition-colors ${
+        isSolo ? 'border-amber-500/30 bg-amber-500/20' : 'bg-teal-500/10 border-teal-500/20'
+      }`}>
+        <Eye className={`h-4 w-4 ${isSolo ? 'text-amber-400' : 'text-teal-400'}`} />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <span className="font-semibold text-zinc-100 truncate">{view.name}</span>
-          <span className="text-[10px] text-zinc-400">{view.schema}</span>
+          <span className={`font-semibold truncate ${isSolo ? 'text-amber-100' : 'text-zinc-100'}`}>{view.name}</span>
+          <span className={`text-[10px] ${isSolo ? 'text-amber-400/70' : 'text-zinc-400'}`}>{view.schema}</span>
         </div>
-        <button
-          onClick={() => onViewCode?.(`${view.schema}.${view.name}`, view.code)}
-          className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-          title="View SQL"
-        >
-          <Code className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onSoloToggle && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onSoloToggle(id as any)
+              }}
+              className={`rounded p-1 transition-colors ${
+                isSolo 
+                  ? 'bg-amber-500 text-white' 
+                  : 'text-zinc-400 hover:bg-teal-500/30 hover:text-teal-100'
+              }`}
+              title={isSolo ? "Show All Nodes" : "Solo Node"}
+            >
+              <Target className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => onViewCode?.(`${view.schema}.${view.name}`, view.code)}
+            className={`rounded p-1 transition-colors ${
+              isSolo ? 'text-amber-400/70 hover:bg-amber-500/30 hover:text-amber-100' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+            title="View SQL"
+          >
+            <Code className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Body */}

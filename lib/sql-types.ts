@@ -111,7 +111,7 @@ export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'g
 export interface BaseNodeData {
   label: string
   onViewCode?: (title: string, code: string) => void
-  onSoloToggle?: (id: string, relatedIds: Set<string>) => void
+  onSoloToggle?: (id: string) => void
   isSolo?: boolean
 }
 
