@@ -5,9 +5,10 @@ import type { ParsedSchema } from './sql-types'
 const NODE_DIMENSIONS = {
   table: { width: 250, height: 200 },
   enum: { width: 180, height: 100 },
-  function: { width: 200, height: 100 },
+  function: { width: 220, height: 120 },
   trigger: { width: 200, height: 120 },
   policy: { width: 240, height: 120 },
+  view: { width: 320, height: 150 },
 }
 
 export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; edges: Edge[] } {
@@ -251,11 +252,11 @@ export function applyDagreLayout(
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({
     rankdir: 'LR',
-    nodesep: 80,
-    ranksep: 160,
-    align: 'UL',
-    marginx: 40,
-    marginy: 40,
+    nodesep: 120, // Increased
+    ranksep: 200, // Increased
+    align: 'DL',  // Better horizontal alignment
+    marginx: 50,
+    marginy: 50,
   })
 
   // Find connected versus isolated nodes
@@ -276,11 +277,23 @@ export function applyDagreLayout(
 
   // Add connected nodes to the graph
   connectedNodes.forEach((node) => {
-    const dimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
-      width: 200,
-      height: 100,
+    // Priority 1: Use actual measured dimensions from the browser if available
+    let width = node.measured?.width || node.width
+    let height = node.measured?.height || node.height
+
+    // Priority 2: Use intelligent estimates for new nodes
+    if (!width || !height) {
+      const base = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || { width: 200, height: 100 }
+      width = base.width
+      height = base.height
+
+      // If it's a table, estimate height based on row count
+      if (node.type === 'table' && (node.data as any)?.table?.columns) {
+        height = Math.max(height, 60 + (node.data as any).table.columns.length * 36)
+      }
     }
-    g.setNode(node.id, { width: dimensions.width, height: dimensions.height })
+
+    g.setNode(node.id, { width, height })
   })
 
   // Create layout-specific edges to control column placement

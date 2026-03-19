@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -74,6 +74,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [visibility, setVisibility] = useState<VisibilityState>(defaultVisibility)
   const [preSoloVisibility, setPreSoloVisibility] = useState<VisibilityState | null>(null)
+  const preSoloNodeLayoutRef = useRef<Node[] | null>(null)
   const [soloCategory, setSoloCategory] = useState<NodeType | 'foreignKey' | null>(null)
   const [codeModal, setCodeModal] = useState<{ isOpen: boolean; title: string; code: string }>({
     isOpen: false,
@@ -100,6 +101,66 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     setNodes(initialNodes)
     setEdges(initialEdges)
   }, [initialNodes, initialEdges, setNodes, setEdges])
+
+  // Layout updates when entering/exiting solo mode
+  useEffect(() => {
+    if (!rfInstance) return
+
+    if (soloNodeId) {
+      if (!preSoloNodeLayoutRef.current) {
+        // Save the COMPLETE current state of all nodes before we start moving things
+        preSoloNodeLayoutRef.current = nodes
+      }
+      
+      const relatedIds = new Set<string>([soloNodeId])
+      edges.forEach((e) => {
+        if (e.source === soloNodeId) relatedIds.add(e.target)
+        else if (e.target === soloNodeId) relatedIds.add(e.source)
+      })
+
+      const soloNodes = nodes.filter((n) => relatedIds.has(n.id))
+      // Un-parent them so they layout strictly relative to 0,0 area, ignoring their container offset
+      const unparentedNodes = soloNodes.map((n) => ({ ...n, parentId: undefined }))
+      const soloEdges = edges.filter((e) => relatedIds.has(e.source) && relatedIds.has(e.target))
+
+      // Use a wider layout for solo mode to ensure no overlaps
+      const layoutedNodes = applyDagreLayout(unparentedNodes, soloEdges, 'LR')
+
+      setNodes((prevNodes) =>
+        prevNodes.map((n) => {
+          const lNode = layoutedNodes.find((ln) => ln.id === n.id)
+          if (lNode) {
+            return {
+              ...n,
+              position: lNode.position,
+              parentId: undefined, // free it from the group frame temporarily
+            }
+          }
+          return n
+        })
+      )
+      
+      // Delay fitView slightly to allow React Flow to process the new positions
+      const timeoutId = setTimeout(() => {
+        rfInstance.fitView({ 
+          nodes: nodes.filter(n => relatedIds.has(n.id)), 
+          padding: 0.2, 
+          duration: 800 
+        })
+      }, 100)
+      return () => clearTimeout(timeoutId)
+      
+    } else if (preSoloNodeLayoutRef.current) {
+      // Revert solo layout to the saved complete set of nodes
+      setNodes(preSoloNodeLayoutRef.current)
+      preSoloNodeLayoutRef.current = null
+      
+      const timeoutId = setTimeout(() => {
+        rfInstance.fitView({ padding: 0.2, duration: 800 })
+      }, 100)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [soloNodeId, rfInstance, setNodes]) // We don't depend on 'nodes' or 'edges' to avoid loops, as we only care about the moment soloNodeId changes.
 
   // Get related node IDs if in solo mode
   const soloRelatedNodeIds = useMemo(() => {
