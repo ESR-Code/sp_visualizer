@@ -1,8 +1,10 @@
 'use client'
 
+import { useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Trash2, Play, FileCode2 } from 'lucide-react'
 import { exampleSQL } from '@/lib/sql-parser'
+import { highlightSQL } from '@/lib/sql-highlighter'
 
 interface SqlInputProps {
   value: string
@@ -12,9 +14,24 @@ interface SqlInputProps {
 }
 
 export function SqlInput({ value, onChange, onVisualize, onClear }: SqlInputProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const highlightRef = useRef<HTMLDivElement>(null)
+
   const loadExample = () => {
     onChange(exampleSQL)
   }
+
+  // Sync scroll between textarea and highlight div
+  const handleScroll = () => {
+    if (textareaRef.current && highlightRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft
+    }
+  }
+
+  useEffect(() => {
+    handleScroll()
+  }, [value])
 
   return (
     <div className="flex h-full flex-col bg-zinc-950">
@@ -44,38 +61,23 @@ export function SqlInput({ value, onChange, onVisualize, onClear }: SqlInputProp
         </div>
       </div>
 
-      {/* Textarea */}
-      <div className="flex-1 overflow-hidden p-2">
+      {/* Editor Area */}
+      <div className="relative flex-1 overflow-hidden p-2">
+        <div 
+          ref={highlightRef}
+          className="absolute inset-2 overflow-auto whitespace-pre rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm pointer-events-none"
+        >
+          {highlightSQL(value)}
+          {/* Extra space at bottom to match textarea */}
+          <div className="h-20" />
+        </div>
         <textarea
+          ref={textareaRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={`Paste your Supabase SQL code here...
-
-Example:
-CREATE TYPE user_status AS ENUM ('active', 'inactive');
-
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  email TEXT NOT NULL,
-  status user_status DEFAULT 'active'
-);
-
-CREATE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER users_update
-  BEFORE UPDATE ON users
-  EXECUTE FUNCTION update_timestamp();
-
-CREATE POLICY users_select ON users
-  FOR SELECT
-  USING (auth.uid() = id);`}
-          className="h-full w-full resize-none rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          onScroll={handleScroll}
+          placeholder={`-- Paste your SQL here...`}
+          className="absolute inset-2 h-full w-full resize-none rounded-md border border-transparent bg-transparent p-3 font-mono text-sm text-transparent caret-white focus:outline-none overflow-auto"
           spellCheck={false}
         />
       </div>

@@ -13,11 +13,13 @@ interface FunctionNodeDataWithCallback extends FunctionNodeData {
 
 function generateFunctionSQL(func: FunctionNodeData['function']): string {
   const schemaPrefix = func.schema !== 'public' ? `${func.schema}.` : ''
+  const indentedBody = func.body.split('\n').map(line => '  ' + line).join('\n')
+  
   return `CREATE OR REPLACE FUNCTION ${schemaPrefix}${func.name}(${func.parameters || ''})
 RETURNS ${func.returnType}
 LANGUAGE plpgsql
 AS $$
-${func.body}
+${indentedBody}
 $$;`
 }
 
