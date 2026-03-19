@@ -2,11 +2,13 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Code2 } from 'lucide-react'
+import { Code2, Target } from 'lucide-react'
 import type { FunctionNodeData } from '@/lib/sql-types'
 
 interface FunctionNodeDataWithCallback extends FunctionNodeData {
   onViewCode?: (title: string, code: string) => void
+  onSoloToggle?: (id: string) => void
+  isSolo?: boolean
 }
 
 function generateFunctionSQL(func: FunctionNodeData['function']): string {
@@ -19,32 +21,52 @@ ${func.body}
 $$;`
 }
 
-function FunctionNodeComponent({ data, selected }: NodeProps) {
-  const nodeData = data as FunctionNodeDataWithCallback
-  const { function: func, onViewCode } = nodeData
+function FunctionNodeComponent({ id, data, selected }: NodeProps) {
+  const nodeData = data as any as FunctionNodeDataWithCallback
+  const { function: func, onViewCode, onSoloToggle, isSolo } = nodeData
 
   return (
     <div
       className={`min-w-[180px] rounded-lg border-2 bg-zinc-900 shadow-xl transition-all ${
-        selected ? 'border-green-400 ring-2 ring-green-400/30' : 'border-green-500/60'
-      }`}
+        selected || isSolo ? 'border-green-400 ring-2' : 'border-green-500/60'
+      } ${isSolo ? 'ring-amber-500/50' : 'ring-green-400/30'}`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 rounded-t-md border-b border-green-500/30 bg-green-500/20 px-3 py-2">
-        <Code2 className="h-4 w-4 text-green-400" />
-        <span className="font-semibold text-green-100">{func.name}</span>
-        {onViewCode && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onViewCode(`Function: ${func.name}`, generateFunctionSQL(func))
-            }}
-            className="ml-auto rounded p-1 text-green-300 transition-colors hover:bg-green-500/30 hover:text-green-100"
-            title="View SQL"
-          >
-            <Code2 className="h-3.5 w-3.5" />
-          </button>
-        )}
+      <div className={`flex items-center gap-2 rounded-t-md border-b px-3 py-2 transition-colors ${
+        isSolo ? 'border-amber-500/30 bg-amber-500/20' : 'border-green-500/30 bg-green-500/20'
+      }`}>
+        <Code2 className={`h-4 w-4 ${isSolo ? 'text-amber-400' : 'text-green-400'}`} />
+        <span className={`font-semibold ${isSolo ? 'text-amber-100' : 'text-green-100'}`}>{func.name}</span>
+        <div className="ml-auto flex items-center gap-1">
+          {onSoloToggle && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onSoloToggle(id)
+              }}
+              className={`rounded p-1 transition-colors ${
+                isSolo 
+                  ? 'bg-amber-500 text-white' 
+                  : 'text-zinc-400 hover:bg-green-500/30 hover:text-green-100'
+              }`}
+              title={isSolo ? "Show All Nodes" : "Solo Node"}
+            >
+              <Target className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onViewCode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onViewCode(`Function: ${func.name}`, generateFunctionSQL(func))
+              }}
+              className="rounded p-1 text-green-300 transition-colors hover:bg-green-500/30 hover:text-green-100"
+              title="View SQL"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Details */}

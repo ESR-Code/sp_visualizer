@@ -2,11 +2,13 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Table2, Key, Link, Code2 } from 'lucide-react'
+import { Table2, Key, Link, Code2, Target } from 'lucide-react'
 import type { TableNodeData } from '@/lib/sql-types'
 
 interface TableNodeDataWithCallback extends TableNodeData {
   onViewCode?: (title: string, code: string) => void
+  onSoloToggle?: (id: string) => void
+  isSolo?: boolean
 }
 
 function generateTableSQL(table: TableNodeData['table']): string {
@@ -30,35 +32,55 @@ function generateTableSQL(table: TableNodeData['table']): string {
   return lines.join('\n')
 }
 
-function TableNodeComponent({ data, selected }: NodeProps) {
-  const nodeData = data as TableNodeDataWithCallback
-  const { table, onViewCode } = nodeData
+function TableNodeComponent({ id, data, selected }: NodeProps) {
+  const nodeData = data as any as TableNodeDataWithCallback
+  const { table, onViewCode, onSoloToggle, isSolo } = nodeData
 
   return (
     <div
       className={`min-w-[220px] rounded-lg border-2 bg-zinc-900 shadow-xl transition-all ${
-        selected ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-blue-500/60'
-      }`}
+        selected || isSolo ? 'border-blue-400 ring-2' : 'border-blue-500/60'
+      } ${isSolo ? 'ring-amber-500/50' : 'ring-blue-400/30'}`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 rounded-t-md border-b border-blue-500/30 bg-blue-500/20 px-3 py-2">
-        <Table2 className="h-4 w-4 text-blue-400" />
-        <span className="font-semibold text-blue-100">{table.name}</span>
+      <div className={`flex items-center gap-2 rounded-t-md border-b px-3 py-2 transition-colors ${
+        isSolo ? 'border-amber-500/30 bg-amber-500/20' : 'border-blue-500/30 bg-blue-500/20'
+      }`}>
+        <Table2 className={`h-4 w-4 ${isSolo ? 'text-amber-400' : 'text-blue-400'}`} />
+        <span className={`font-semibold ${isSolo ? 'text-amber-100' : 'text-blue-100'}`}>{table.name}</span>
         {table.schema !== 'public' && (
-          <span className="text-xs text-blue-300/70">{table.schema}</span>
+          <span className={`text-xs ${isSolo ? 'text-amber-300/70' : 'text-blue-300/70'}`}>{table.schema}</span>
         )}
-        {onViewCode && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onViewCode(`Table: ${table.name}`, generateTableSQL(table))
-            }}
-            className="ml-auto rounded p-1 text-blue-300 transition-colors hover:bg-blue-500/30 hover:text-blue-100"
-            title="View SQL"
-          >
-            <Code2 className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {onSoloToggle && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onSoloToggle(id)
+              }}
+              className={`rounded p-1 transition-colors ${
+                isSolo 
+                  ? 'bg-amber-500 text-white' 
+                  : 'text-zinc-400 hover:bg-blue-500/30 hover:text-blue-100'
+              }`}
+              title={isSolo ? "Show All Nodes" : "Solo Node"}
+            >
+              <Target className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onViewCode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onViewCode(`Table: ${table.name}`, generateTableSQL(table))
+              }}
+              className="rounded p-1 text-blue-300 transition-colors hover:bg-blue-500/30 hover:text-blue-100"
+              title="View SQL"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Columns */}

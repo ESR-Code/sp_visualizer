@@ -34,6 +34,8 @@ const nodeTypes = {
 
 interface FlowDiagramProps {
   schema: ParsedSchema | null
+  soloNodeId: string | null
+  onSoloToggle: (id: string) => void
 }
 
 const defaultVisibility: VisibilityState = {
@@ -54,7 +56,7 @@ const edgeTypeToNodeType: Record<string, NodeType | 'foreignKey'> = {
   policyTable: 'policy',
 }
 
-export function FlowDiagram({ schema }: FlowDiagramProps) {
+export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramProps) {
   const [visibility, setVisibility] = useState<VisibilityState>(defaultVisibility)
   const [codeModal, setCodeModal] = useState<{ isOpen: boolean; title: string; code: string }>({
     isOpen: false,
@@ -82,15 +84,38 @@ export function FlowDiagram({ schema }: FlowDiagramProps) {
     setEdges(initialEdges)
   }, [initialNodes, initialEdges, setNodes, setEdges])
 
-  // Filter nodes based on visibility
+  // Get related node IDs if in solo mode
+  const soloRelatedNodeIds = useMemo(() => {
+    if (!soloNodeId) return null
+    
+    const relatedIds = new Set<string>([soloNodeId])
+    
+    // Find direct connections
+    edges.forEach(edge => {
+      if (edge.source === soloNodeId) {
+        relatedIds.add(edge.target)
+      } else if (edge.target === soloNodeId) {
+        relatedIds.add(edge.source)
+      }
+    })
+    
+    return relatedIds
+  }, [soloNodeId, edges])
+
+  // Filter nodes based on visibility and solo mode
   const filteredNodes = useMemo(() => {
     return nodes.filter((node) => {
+      // If in solo mode, only show the solo node and its related nodes
+      if (soloRelatedNodeIds && !soloRelatedNodeIds.has(node.id)) {
+        return false
+      }
+      
       const nodeType = node.type as NodeType
       return visibility[nodeType]
     })
-  }, [nodes, visibility])
+  }, [nodes, visibility, soloRelatedNodeIds])
 
-  // Filter edges based on visibility
+  // Filter edges based on visibility and solo mode
   const filteredEdges = useMemo(() => {
     const visibleNodeIds = new Set(filteredNodes.map((n) => n.id))
     
@@ -101,6 +126,11 @@ export function FlowDiagram({ schema }: FlowDiagramProps) {
       
       if (!sourceVisible || !targetVisible) return false
       
+      // If in solo mode, only show edges connected to the solo node
+      if (soloNodeId && edge.source !== soloNodeId && edge.target !== soloNodeId) {
+        return false
+      }
+      
       // Check edge type visibility
       const edgeType = edge.data?.type as string
       if (edgeType && edgeTypeToNodeType[edgeType]) {
@@ -109,7 +139,7 @@ export function FlowDiagram({ schema }: FlowDiagramProps) {
       
       return true
     })
-  }, [edges, filteredNodes, visibility])
+  }, [edges, filteredNodes, visibility, soloNodeId])
 
   const onResetLayout = useCallback(() => {
     if (!schema) return
@@ -144,19 +174,21 @@ export function FlowDiagram({ schema }: FlowDiagramProps) {
         <div className="rounded-lg border border-dashed border-zinc-700 p-8 text-center">
           <p className="text-lg font-medium text-zinc-400">No SQL schema to visualize</p>
           <p className="mt-2 text-sm text-zinc-500">
-            Paste your Supabase SQL code in the left panel and click &quot;Visualize&quot;
+            Paste your SQL code in the left panel and click &quot;Visualize&quot;
           </p>
         </div>
       </div>
     )
   }
 
-  // Add onViewCode to node data
+  // Add callbacks and solo state to node data
   const nodesWithCallbacks = filteredNodes.map((node) => ({
     ...node,
     data: {
       ...node.data,
       onViewCode,
+      onSoloToggle,
+      isSolo: soloNodeId === node.id,
     },
   }))
 

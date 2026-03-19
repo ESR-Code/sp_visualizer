@@ -24,6 +24,8 @@ export default function Home() {
     foreignKeys: number
   } | null>(null)
 
+  const [soloNodeId, setSoloNodeId] = useState<string | null>(null)
+
   const handleVisualize = useCallback(() => {
     if (!sqlCode.trim()) return
 
@@ -37,12 +39,14 @@ export default function Home() {
       policies: parsed.policies.length,
       foreignKeys: parsed.foreignKeys.length,
     })
+    setSoloNodeId(null) // Reset solo mode on new visualization
   }, [sqlCode])
 
   const handleClear = useCallback(() => {
     setSqlCode('')
     setSchema(null)
     setStats(null)
+    setSoloNodeId(null)
   }, [])
 
   return (
@@ -63,17 +67,39 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stats */}
-        {stats && (
-          <div className="flex items-center gap-4">
-            <StatBadge label="Tables" value={stats.tables} color="bg-blue-500" />
-            <StatBadge label="Enums" value={stats.enums} color="bg-purple-500" />
-            <StatBadge label="Functions" value={stats.functions} color="bg-green-500" />
-            <StatBadge label="Triggers" value={stats.triggers} color="bg-orange-500" />
-            <StatBadge label="Policies" value={stats.policies} color="bg-red-500" />
-            <StatBadge label="FK Relations" value={stats.foreignKeys} color="bg-blue-300" />
-          </div>
-        )}
+        <div className="flex items-center gap-6">
+          {/* Solo Mode Indicator */}
+          {soloNodeId && (
+            <div className="flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500 animate-pulse">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              Solo Mode: {schema?.tables.find(t => t.id === soloNodeId)?.name || 
+                        schema?.enums.find(e => e.id === soloNodeId)?.name ||
+                        schema?.functions.find(f => f.id === soloNodeId)?.name ||
+                        schema?.triggers.find(tr => tr.id === soloNodeId)?.name ||
+                        schema?.policies.find(p => p.id === soloNodeId)?.name || 'Isolated Node'}
+              <button 
+                onClick={() => setSoloNodeId(null)}
+                className="ml-1 rounded-full p-0.5 hover:bg-amber-500/20"
+                title="Exit Solo Mode"
+              >
+                <span className="sr-only">Exit</span>
+                &times;
+              </button>
+            </div>
+          )}
+
+          {/* Stats */}
+          {stats && (
+            <div className="flex items-center gap-4">
+              <StatBadge label="Tables" value={stats.tables} color="bg-blue-500" />
+              <StatBadge label="Enums" value={stats.enums} color="bg-purple-500" />
+              <StatBadge label="Functions" value={stats.functions} color="bg-green-500" />
+              <StatBadge label="Triggers" value={stats.triggers} color="bg-orange-500" />
+              <StatBadge label="Policies" value={stats.policies} color="bg-red-500" />
+              <StatBadge label="FK Relations" value={stats.foreignKeys} color="bg-blue-300" />
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Main Content */}
@@ -92,7 +118,11 @@ export default function Home() {
 
           <ResizablePanel defaultSize={70}>
             <div className="h-full bg-zinc-950">
-              <FlowDiagram schema={schema} />
+              <FlowDiagram 
+                schema={schema} 
+                soloNodeId={soloNodeId}
+                onSoloToggle={(id) => setSoloNodeId(prev => prev === id ? null : id)}
+              />
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
