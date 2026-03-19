@@ -138,7 +138,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         source: sourceEnum.id,
         target: targetTable.id,
         sourceHandle: `${sourceEnum.name}-source`,
-        targetHandle: `${usage.tableName}-enum-target`,
+        targetHandle: `${usage.tableName}-${usage.columnName}-target`,
         type: 'smoothstep',
         animated: false,
         style: { stroke: '#a855f7', strokeWidth: 2, strokeDasharray: '2,4' },

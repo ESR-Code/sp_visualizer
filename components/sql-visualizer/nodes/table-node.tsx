@@ -141,14 +141,6 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         className="!h-2 !w-2 !border-2 !border-red-400 !bg-zinc-900"
         isConnectable={false}
       />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={`${table.name}-enum-target`}
-        className="!-left-1 !h-2 !w-2 !border-2 !border-purple-400 !bg-zinc-900"
-        style={{ top: '50%' }}
-        isConnectable={false}
-      />
     </div>
   )
 }
