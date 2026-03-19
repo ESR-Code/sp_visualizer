@@ -196,11 +196,18 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
 export function applyDagreLayout(
   nodes: Node[],
   edges: Edge[],
-  direction: 'TB' | 'LR' = 'TB'
+  direction: 'TB' | 'LR' = 'LR'
 ): Node[] {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: direction, nodesep: 100, ranksep: 120 })
+  g.setGraph({
+    rankdir: 'LR',
+    nodesep: 80,
+    ranksep: 160,
+    align: 'UL',
+    marginx: 40,
+    marginy: 40,
+  })
 
   // Find connected versus isolated nodes
   const connectedNodeIds = new Set<string>()
@@ -212,7 +219,13 @@ export function applyDagreLayout(
   const connectedNodes = nodes.filter((node) => connectedNodeIds.has(node.id))
   const isolatedNodes = nodes.filter((node) => !connectedNodeIds.has(node.id))
 
-  // Layout connected nodes using Dagre
+  // Build a type lookup for nodes
+  const nodeTypeMap = new Map<string, string>()
+  nodes.forEach((node) => {
+    nodeTypeMap.set(node.id, node.type || 'unknown')
+  })
+
+  // Add connected nodes to the graph
   connectedNodes.forEach((node) => {
     const dimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
       width: 200,
@@ -221,8 +234,34 @@ export function applyDagreLayout(
     g.setNode(node.id, { width: dimensions.width, height: dimensions.height })
   })
 
+  // Create layout-specific edges to control column placement
+  // Goal: Enums (col 1) → Tables (col 2) → Triggers/Policies (col 3) → Functions (col 4)
+  //
+  // To achieve this with LR layout:
+  //   - Enum → Table edges: keep as-is (enum left, table right) ✓
+  //   - Trigger → Table edges: REVERSE to Table → Trigger (table left, trigger right) 
+  //   - Trigger → Function edges: keep as-is (trigger left, function right) ✓
+  //   - Policy → Table edges: REVERSE to Table → Policy (table left, policy right)
+  //   - FK edges (Table → Table): keep as-is ✓
+  //   - Function → Function call edges: keep as-is ✓
   edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target)
+    const sourceType = nodeTypeMap.get(edge.source)
+    const targetType = nodeTypeMap.get(edge.target)
+
+    // Only add edges for connected nodes
+    if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) return
+
+    // Reverse trigger→table and policy→table so tables rank before them
+    if (
+      (sourceType === 'trigger' && targetType === 'table') ||
+      (sourceType === 'policy' && targetType === 'table')
+    ) {
+      // Reversed: table → trigger/policy (puts table LEFT, trigger/policy RIGHT)
+      g.setEdge(edge.target, edge.source, { weight: 2 })
+    } else {
+      // Keep normal direction
+      g.setEdge(edge.source, edge.target, { weight: 1 })
+    }
   })
 
   dagre.layout(g)
