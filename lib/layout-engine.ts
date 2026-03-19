@@ -182,6 +182,40 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
     }
   })
 
+  // Create edges for views → dependencies
+  schema.views.forEach((view) => {
+    view.dependencies.forEach((depName) => {
+      const targetTable = schema.tables.find((t) => t.name.toLowerCase() === depName.toLowerCase())
+      const targetView = schema.views.find((v) => v.name.toLowerCase() === depName.toLowerCase())
+
+      if (targetTable) {
+        edges.push({
+          id: `view-dep-${view.id}-${targetTable.id}`,
+          source: view.id,
+          target: targetTable.id,
+          sourceHandle: `${view.name}-source`,
+          targetHandle: `${targetTable.name}-view-target`,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#14b8a6', strokeWidth: 2, strokeDasharray: '4,4' },
+          data: { type: 'viewDependency' },
+        })
+      } else if (targetView && targetView.id !== view.id) { // Avoid self referencing just in case
+        edges.push({
+          id: `view-dep-${view.id}-${targetView.id}`,
+          source: view.id,
+          target: targetView.id,
+          sourceHandle: `${view.name}-source`,
+          targetHandle: `${targetView.name}-target`,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#14b8a6', strokeWidth: 2, strokeDasharray: '4,4' },
+          data: { type: 'viewDependency' },
+        })
+      }
+    })
+  })
+
   // Create edges for function → function calls
   schema.functionCalls.forEach((call) => {
     const callerFunc = schema.functions.find((f) => f.name === call.callerName && f.schema === call.callerSchema)

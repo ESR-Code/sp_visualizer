@@ -141,6 +141,14 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         className="!h-2 !w-2 !border-2 !border-red-400 !bg-zinc-900"
         isConnectable={false}
       />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id={`${table.name}-view-target`}
+        className="!h-2 !w-2 !border-2 !border-teal-400 !bg-zinc-900"
+        style={{ top: '24px' }}
+        isConnectable={false}
+      />
     </div>
   )
 }

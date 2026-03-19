@@ -476,12 +476,24 @@ function parseViews(sql: string): ParsedView[] {
   while ((match = viewRegexWithClause.exec(sql)) !== null) {
     const rawWithClause = match[3] || ''
     const isSecurityInvoker = /security_invoker\s*=\s*['"]?(on|true|1)['"]?/i.test(rawWithClause)
+    const asClause = match[4] || ''
+    
+    // Naïve table dependency extraction
+    const dependencies = new Set<string>()
+    const depRegex = /(?:FROM|JOIN)\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?/gi
+    let depMatch
+    while ((depMatch = depRegex.exec(asClause)) !== null) {
+      if (depMatch[2]) {
+        dependencies.add(depMatch[2])
+      }
+    }
 
     views.push({
       id: generateId('view'),
       schema: match[1] || 'public',
       name: match[2],
       securityInvoker: isSecurityInvoker,
+      dependencies: Array.from(dependencies),
       code: match[0].trim(),
     })
   }

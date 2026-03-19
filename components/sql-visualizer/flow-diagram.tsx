@@ -63,6 +63,7 @@ const edgeTypeToNodeType: Record<string, NodeType | 'foreignKey'> = {
   triggerFunction: 'trigger',
   enumUsage: 'enum',
   policyTable: 'policy',
+  viewDependency: 'view',
 }
 
 export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramProps) {

@@ -89,6 +89,7 @@ export interface ParsedView {
   name: string
   schema: string
   securityInvoker: boolean
+  dependencies: string[]
   code: string
 }
 
@@ -139,4 +140,4 @@ export interface ViewNodeData extends BaseNodeData {
 }
 
 // Edge types
-export type EdgeType = 'foreignKey' | 'triggerTable' | 'triggerFunction' | 'enumUsage' | 'policyTable' | 'functionCall'
+export type EdgeType = 'foreignKey' | 'triggerTable' | 'triggerFunction' | 'enumUsage' | 'policyTable' | 'functionCall' | 'viewDependency'
