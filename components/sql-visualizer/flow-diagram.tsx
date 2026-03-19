@@ -64,6 +64,8 @@ const edgeTypeToNodeType: Record<string, NodeType | 'foreignKey'> = {
 
 export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramProps) {
   const [visibility, setVisibility] = useState<VisibilityState>(defaultVisibility)
+  const [preSoloVisibility, setPreSoloVisibility] = useState<VisibilityState | null>(null)
+  const [soloCategory, setSoloCategory] = useState<NodeType | 'foreignKey' | null>(null)
   const [codeModal, setCodeModal] = useState<{ isOpen: boolean; title: string; code: string }>({
     isOpen: false,
     title: '',
@@ -163,6 +165,8 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   }, [schema, setNodes, setEdges])
 
   const onToggleVisibility = useCallback((type: NodeType | 'foreignKey') => {
+    setSoloCategory(null)
+    setPreSoloVisibility(null)
     setVisibility((prev) => ({
       ...prev,
       [type]: !prev[type],
@@ -170,17 +174,29 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   }, [])
 
   const onSoloVisibility = useCallback((type: NodeType | 'foreignKey') => {
-    setVisibility({
-      table: false,
-      enum: false,
-      function: false,
-      trigger: false,
-      policy: false,
-      foreignKey: false,
-      group: true,
-      [type]: true,
-    })
-  }, [])
+    if (soloCategory === type) {
+      // Revert solo
+      setVisibility(preSoloVisibility || defaultVisibility)
+      setSoloCategory(null)
+      setPreSoloVisibility(null)
+    } else {
+      // Enter new solo
+      if (!soloCategory) {
+        setPreSoloVisibility(visibility)
+      }
+      setSoloCategory(type)
+      setVisibility({
+        table: false,
+        enum: false,
+        function: false,
+        trigger: false,
+        policy: false,
+        foreignKey: false,
+        group: true,
+        [type]: true,
+      })
+    }
+  }, [soloCategory, preSoloVisibility, visibility])
 
   const onViewCode = useCallback((title: string, code: string) => {
     setCodeModal({ isOpen: true, title, code })
@@ -262,7 +278,12 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
           position="top-right"
         />
       </ReactFlow>
-      <Legend visibility={visibility} onToggle={onToggleVisibility} onSolo={onSoloVisibility} />
+      <Legend 
+        visibility={visibility} 
+        onToggle={onToggleVisibility} 
+        onSolo={onSoloVisibility} 
+        soloCategory={soloCategory}
+      />
       <button
         onClick={onResetLayout}
         className="absolute left-4 top-4 z-10 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"

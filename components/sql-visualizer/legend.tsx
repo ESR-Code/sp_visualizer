@@ -27,9 +27,10 @@ interface LegendProps {
   visibility: VisibilityState
   onToggle: (type: NodeType | 'foreignKey') => void
   onSolo: (type: NodeType | 'foreignKey') => void
+  soloCategory: NodeType | 'foreignKey' | null
 }
 
-export function Legend({ visibility, onToggle, onSolo }: LegendProps) {
+export function Legend({ visibility, onToggle, onSolo, soloCategory }: LegendProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   return (
@@ -51,6 +52,7 @@ export function Legend({ visibility, onToggle, onSolo }: LegendProps) {
         <div className="mt-3 grid gap-1">
           {items.map((item) => {
             const isVisible = visibility[item.type]
+            const isSoloed = soloCategory === item.type
             return (
               <div key={item.label} className="flex gap-1 group">
                 <button
@@ -77,10 +79,14 @@ export function Legend({ visibility, onToggle, onSolo }: LegendProps) {
                     e.stopPropagation()
                     onSolo(item.type)
                   }}
-                  className="rounded px-2 text-zinc-500 hover:bg-zinc-800 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all font-medium text-[10px] tracking-wider uppercase"
-                  title="Solo this category"
+                  className={`rounded px-2 font-medium text-[10px] tracking-wider uppercase transition-all ${
+                    isSoloed
+                      ? 'opacity-100 bg-amber-500/20 text-amber-400'
+                      : 'opacity-0 group-hover:opacity-100 text-zinc-500 hover:bg-zinc-800 hover:text-amber-400'
+                  }`}
+                  title={isSoloed ? "Un-solo this category" : "Solo this category"}
                 >
-                  Solo
+                  {isSoloed ? 'Soloed' : 'Solo'}
                 </button>
               </div>
             )
