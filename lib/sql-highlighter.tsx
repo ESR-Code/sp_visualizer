@@ -21,7 +21,7 @@ const keywords = [
   'DOUBLE', 'PRECISION', 'JSONB', 'JSON', 'ARRAY', 'BYTEA'
 ]
 
-export function highlightSQL(code: string, showLineNumbers = true): React.ReactNode[] {
+export function highlightSQL(code: string): React.ReactNode[] {
   const lines = code.split('\n')
   
   return lines.map((line, lineIndex) => {
@@ -127,19 +127,8 @@ export function highlightSQL(code: string, showLineNumbers = true): React.ReactN
       remaining = remaining.slice(1)
     }
 
-    if (showLineNumbers) {
-      return (
-        <div key={lineIndex} className="flex min-h-[1.5rem]">
-          <span className="w-10 shrink-0 select-none pr-4 text-right text-zinc-600">
-            {lineIndex + 1}
-          </span>
-          <span className="flex-1 whitespace-pre-wrap">{tokens}</span>
-        </div>
-      )
-    }
-
     return (
-      <div key={lineIndex} className="min-h-[1.5rem] whitespace-pre-wrap">
+      <div key={lineIndex} className="leading-6 whitespace-pre font-mono text-sm h-6">
         {tokens}
       </div>
     )

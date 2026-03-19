@@ -62,25 +62,53 @@ export function SqlInput({ value, onChange, onVisualize, onClear }: SqlInputProp
       </div>
 
       {/* Editor Area */}
-      <div className="relative flex-1 overflow-hidden p-2">
-        <div 
-          ref={highlightRef}
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-          className="absolute inset-2 overflow-auto whitespace-pre rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm pointer-events-none [&::-webkit-scrollbar]:display-none"
-        >
-          {highlightSQL(value)}
-          {/* Extra space at bottom to match textarea */}
-          <div className="h-20" />
+      <div className="relative flex-1 p-4 overflow-hidden">
+        <div className="flex h-full w-full rounded-md border border-zinc-800 bg-zinc-900 overflow-hidden">
+          {/* Line Numbers Sidebar */}
+          <div 
+            ref={(el) => {
+              if (el) {
+                // Keep line numbers scroll in sync with textarea vertically
+                el.scrollTop = textareaRef.current?.scrollTop || 0
+              }
+            }}
+            className="w-12 shrink-0 select-none bg-zinc-950/20 py-3 text-right font-mono text-[11px] text-zinc-600 border-r border-zinc-800/50 overflow-hidden"
+          >
+            {value.split('\n').map((_, i) => (
+              <div key={i} className="px-2 leading-6 h-6">{i + 1}</div>
+            ))}
+            <div className="h-20" />
+          </div>
+
+          {/* Code Editor Area */}
+          <div className="relative flex-1 overflow-hidden">
+            {/* Highlighter Layer */}
+            <div 
+              ref={highlightRef}
+              className="pointer-events-none absolute inset-0 overflow-hidden p-3"
+            >
+              {highlightSQL(value)}
+              <div className="h-20" />
+            </div>
+            
+            {/* Textarea Layer */}
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onScroll={(e) => {
+                handleScroll()
+                // Also manually sync the line numbers div because it doesn't have a ref we can easily target in handleScroll without extra state
+                const gutter = e.currentTarget.parentElement?.previousElementSibling as HTMLDivElement
+                if (gutter) gutter.scrollTop = e.currentTarget.scrollTop
+              }}
+              placeholder={`-- Paste your SQL here...`}
+              spellCheck={false}
+              wrap="off"
+              className="absolute inset-0 h-full w-full bg-transparent p-3 font-mono text-sm leading-6 text-transparent caret-white focus:outline-none resize-none overflow-auto custom-scrollbar whitespace-pre"
+            />
+          </div>
         </div>
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onScroll={handleScroll}
-          placeholder={`-- Paste your SQL here...`}
-          className="absolute inset-2 h-full w-full resize-none rounded-md border border-transparent bg-transparent p-3 font-mono text-sm text-transparent caret-zinc-100 focus:outline-none overflow-auto custom-scrollbar"
-          spellCheck={false}
-        />
       </div>
 
       {/* Footer with Visualize Button */}
