@@ -97,7 +97,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
   // Update nodes/edges when schema changes
-  useMemo(() => {
+  useEffect(() => {
     setNodes(initialNodes)
     setEdges(initialEdges)
   }, [initialNodes, initialEdges, setNodes, setEdges])
@@ -282,19 +282,6 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     schema.views.length === 0
   )
 
-  if (isEmpty) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 text-zinc-500">
-        <div className="rounded-lg border border-dashed border-zinc-700 p-8 text-center">
-          <p className="text-lg font-medium text-zinc-400">No SQL schema to visualize</p>
-          <p className="mt-2 text-sm text-zinc-500">
-            Paste your SQL code in the left panel and click &quot;Visualize&quot;
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   // Add callbacks and solo state to node data
   const nodesWithCallbacks = filteredNodes.map((node) => ({
     ...node,
@@ -354,6 +341,19 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     rfInstance.setCenter(x, y, { duration: 800, zoom: 1.2 })
     setSearchQuery('')
   }, [rfInstance])
+
+  if (isEmpty) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-zinc-500">
+        <div className="rounded-lg border border-dashed border-zinc-700 p-8 text-center">
+          <p className="text-lg font-medium text-zinc-400">No SQL schema to visualize</p>
+          <p className="mt-2 text-sm text-zinc-500">
+            Paste your SQL code in the left panel and click &quot;Visualize&quot;
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative h-full w-full">
