@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Table2, Key, Link, Code2, Target } from 'lucide-react'
+import { Table2, Key, Link, Code2, Target, Zap } from 'lucide-react'
 import type { TableNodeData } from '@/lib/sql-types'
 
 
@@ -30,7 +30,7 @@ function generateTableSQL(table: TableNodeData['table']): string {
 
 function TableNodeComponent({ id, data, selected }: NodeProps) {
   const nodeData = data as any as TableNodeData
-  const { table, onViewCode, onSoloToggle, isSolo } = nodeData
+  const { table, onViewCode, onSoloToggle, onImpactAnalysis, isSolo } = nodeData
 
   return (
     <div
@@ -48,6 +48,18 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
           <span className={`text-xs ${isSolo ? 'text-amber-300/70' : 'text-blue-300/70'}`}>{table.schema}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {onImpactAnalysis && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onImpactAnalysis(table)
+              }}
+              className="rounded p-1 text-zinc-400 transition-colors hover:bg-amber-500/30 hover:text-amber-100"
+              title="Impact Analysis"
+            >
+              <Zap className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onSoloToggle && (
             <button
               onClick={(e) => {

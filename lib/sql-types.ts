@@ -117,6 +117,7 @@ export interface BaseNodeData {
 
 export interface TableNodeData extends BaseNodeData {
   table: ParsedTable
+  onImpactAnalysis?: (table: ParsedTable) => void
 }
 
 export interface EnumNodeData extends BaseNodeData {

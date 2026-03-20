@@ -24,7 +24,8 @@ import { PolicyNode } from './nodes/policy-node'
 import { ViewNode } from './nodes/view-node'
 import { Legend, type VisibilityState } from './legend'
 import { CodeModal } from './code-modal'
-import type { ParsedSchema, NodeType } from '@/lib/sql-types'
+import { ImpactModal } from './impact-modal'
+import type { ParsedSchema, NodeType, ParsedTable } from '@/lib/sql-types'
 import { generateNodesAndEdges, applyDagreLayout } from '@/lib/layout-engine'
 
 const nodeTypes = {
@@ -80,6 +81,10 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     isOpen: false,
     title: '',
     code: '',
+  })
+  const [impactModal, setImpactModal] = useState<{ isOpen: boolean; table: ParsedTable | null }>({
+    isOpen: false,
+    table: null,
   })
 
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -273,6 +278,10 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     setCodeModal({ isOpen: true, title, code })
   }, [])
 
+  const onImpactAnalysis = useCallback((table: ParsedTable) => {
+    setImpactModal({ isOpen: true, table })
+  }, [])
+
   const isEmpty = !schema || (
     schema.tables.length === 0 &&
     schema.enums.length === 0 &&
@@ -289,6 +298,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
       ...node.data,
       onViewCode,
       onSoloToggle,
+      onImpactAnalysis,
       isSolo: soloNodeId === node.id,
     },
   }))
@@ -473,6 +483,12 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
         onClose={() => setCodeModal({ isOpen: false, title: '', code: '' })}
         title={codeModal.title}
         code={codeModal.code}
+      />
+      <ImpactModal
+        isOpen={impactModal.isOpen}
+        onClose={() => setImpactModal({ isOpen: false, table: null })}
+        schema={schema}
+        table={impactModal.table}
       />
     </div>
   )
