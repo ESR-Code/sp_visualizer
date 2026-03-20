@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
+import { useCallback, useMemo, useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
+import { toPng } from 'html-to-image'
 import {
   ReactFlow,
   Background,
@@ -69,7 +70,12 @@ const edgeTypeToNodeType: Record<string, NodeType | 'foreignKey'> = {
   viewDependency: 'view',
 }
 
-export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramProps) {
+export interface FlowDiagramRef {
+  takeScreenshot: () => void
+}
+
+export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
+  ({ schema, soloNodeId, onSoloToggle }, ref) => {
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -282,6 +288,38 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     setImpactModal({ isOpen: true, table })
   }, [])
 
+  useImperativeHandle(ref, () => ({
+    takeScreenshot: () => {
+      const element = document.querySelector('.react-flow') as HTMLElement
+      if (!element) return
+
+      // Hide controls and background patterns for the screenshot if needed
+      // Or just capture the whole thing
+      toPng(element, {
+        backgroundColor: '#09090b', // zinc-950
+        cacheBust: true,
+        style: {
+          transform: 'scale(1)',
+        },
+        filter: (node) => {
+          const element = node as HTMLElement
+          return !element.classList?.contains('no-export') && 
+                 !element.classList?.contains('react-flow__controls') && 
+                 !element.classList?.contains('react-flow__minimap')
+        }
+      })
+      .then((dataUrl) => {
+        const link = document.createElement('a')
+        link.download = `sql-flow-${new Date().toISOString().split('T')[0]}.png`
+        link.href = dataUrl
+        link.click()
+      })
+      .catch((err) => {
+        console.error('Failed to take screenshot:', err)
+      })
+    }
+  }), [rfInstance])
+
   const isEmpty = !schema || (
     schema.tables.length === 0 &&
     schema.enums.length === 0 &&
@@ -369,7 +407,7 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
     <div className="relative h-full w-full">
       {/* Search Bar UI */}
       {!isEmpty && (
-        <div className="absolute left-1/2 top-4 z-20 w-80 -translate-x-1/2">
+        <div className="no-export absolute left-1/2 top-4 z-20 w-80 -translate-x-1/2">
           <div className="relative flex items-center shadow-lg">
             <Search className="absolute left-3 h-4 w-4 text-zinc-400" />
             <input
@@ -466,15 +504,17 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
           position="top-right"
         />
       </ReactFlow>
-      <Legend 
-        visibility={visibility} 
-        onToggle={onToggleVisibility} 
-        onSolo={onSoloVisibility} 
-        soloCategory={soloCategory}
-      />
+      <div className="no-export">
+        <Legend 
+          visibility={visibility} 
+          onToggle={onToggleVisibility} 
+          onSolo={onSoloVisibility} 
+          soloCategory={soloCategory}
+        />
+      </div>
       <button
         onClick={onResetLayout}
-        className="absolute left-4 top-4 z-10 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
+        className="no-export absolute left-4 top-4 z-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
       >
         Reset Layout
       </button>
@@ -492,4 +532,6 @@ export function FlowDiagram({ schema, soloNodeId, onSoloToggle }: FlowDiagramPro
       />
     </div>
   )
-}
+})
+
+FlowDiagram.displayName = 'FlowDiagram'

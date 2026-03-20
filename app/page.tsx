@@ -1,16 +1,24 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { SqlInput } from '@/components/sql-visualizer/sql-input'
-import { FlowDiagram } from '@/components/sql-visualizer/flow-diagram'
+import { FlowDiagram, type FlowDiagramRef } from '@/components/sql-visualizer/flow-diagram'
 import { parseSQL } from '@/lib/sql-parser'
 import type { ParsedSchema } from '@/lib/sql-types'
-import { Database, GitBranch } from 'lucide-react'
+import { Database, GitBranch, Download, Camera, FileCode, FileText, ChevronDown } from 'lucide-react'
 
 export default function Home() {
   const [sqlCode, setSqlCode] = useState('')
@@ -25,6 +33,41 @@ export default function Home() {
   } | null>(null)
 
   const [soloNodeId, setSoloNodeId] = useState<string | null>(null)
+  const flowRef = useRef<FlowDiagramRef>(null)
+
+  const handleExportScreenshot = useCallback(() => {
+    flowRef.current?.takeScreenshot()
+  }, [])
+
+  const handleExportJson = useCallback(() => {
+    if (!schema) return
+    const data = JSON.stringify(schema, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `schema-${new Date().toISOString().split('T')[0]}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [schema])
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!schema) return
+    // Simple markdown export for now
+    let md = `# Schema: ${schema.tables.length} tables\n\n`
+    schema.tables.forEach(t => {
+      md += `## Table: ${t.name}\n`
+      t.columns.forEach(c => md += `- ${c.name} (${c.type})\n`)
+      md += '\n'
+    })
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `schema-${new Date().toISOString().split('T')[0]}.md`
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [schema])
 
   const handleVisualize = useCallback(() => {
     if (!sqlCode.trim()) return
@@ -99,6 +142,42 @@ export default function Home() {
               <StatBadge label="FK Relations" value={stats.foreignKeys} color="bg-blue-300" />
             </div>
           )}
+
+          {schema && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-9 border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                  <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 border-zinc-700 bg-zinc-900 text-zinc-200">
+                <DropdownMenuItem 
+                  onClick={handleExportScreenshot}
+                  className="cursor-pointer focus:bg-zinc-800 focus:text-white"
+                >
+                  <Camera className="mr-2 h-4 w-4" />
+                  Export Screenshot
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-zinc-800" />
+                <DropdownMenuItem 
+                  onClick={handleExportJson}
+                  className="cursor-pointer focus:bg-zinc-800 focus:text-white"
+                >
+                  <FileCode className="mr-2 h-4 w-4" />
+                  Export JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={handleExportMarkdown}
+                  className="cursor-pointer focus:bg-zinc-800 focus:text-white"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Export Markdown
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </header>
 
@@ -119,6 +198,7 @@ export default function Home() {
           <ResizablePanel defaultSize={70}>
             <div className="h-full bg-zinc-950">
               <FlowDiagram 
+                ref={flowRef}
                 schema={schema} 
                 soloNodeId={soloNodeId}
                 onSoloToggle={(id) => setSoloNodeId(prev => prev === id ? null : id)}
