@@ -354,40 +354,17 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
 
   const handleNodeClickFromSearch = useCallback((node: Node) => {
     if (!rfInstance) return
-    const { position, measured } = node
     
-    // Calculate absolute position if the node is inside a parent frame
-    let absX = position.x
-    let absY = position.y
-    let currentParentId = node.parentId
+    rfInstance.fitView({ 
+      nodes: [{ id: node.id }], 
+      duration: 800, 
+      padding: 0.5,
+      minZoom: 1,
+      maxZoom: 1.2
+    })
     
-    while (currentParentId) {
-      const parentNode = rfInstance.getNode(currentParentId)
-      if (parentNode) {
-        absX += parentNode.position.x
-        absY += parentNode.position.y
-        currentParentId = parentNode.parentId
-      } else {
-        break
-      }
-    }
-
-    // Target position is absolute pos + half width/height
-    let w = 200
-    let h = 100
-    if (measured && measured.width && measured.height) {
-      w = measured.width
-      h = measured.height
-    } else if (node.width && node.height) {
-      w = node.width
-      h = node.height
-    }
-    
-    const x = absX + w / 2
-    const y = absY + h / 2
-
-    rfInstance.setCenter(x, y, { duration: 800, zoom: 1.2 })
     setSearchQuery('')
+    setIsSearchFocused(false)
   }, [rfInstance])
 
   if (isEmpty) {
@@ -413,7 +390,12 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
             <input
                type="text"
                value={searchQuery}
-               onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  if (!isSearchFocused && e.target.value) {
+                    setIsSearchFocused(true)
+                  }
+                }}
                onFocus={() => setIsSearchFocused(true)}
                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                placeholder="Search nodes by name or type..."
@@ -443,6 +425,7 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
                    return (
                      <button
                        key={node.id}
+                       onMouseDown={(e) => e.preventDefault()} // Keep focus on input while clicking
                        onClick={() => handleNodeClickFromSearch(node)}
                        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-700/50"
                      >
