@@ -22,7 +22,11 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
       id: table.id,
       type: 'table',
       position: { x: 0, y: 0 },
-      data: { label: table.name, table },
+      data: { 
+        label: table.name, 
+        table, 
+        rlsEnabled: table.rlsEnabled 
+      },
     })
   })
 

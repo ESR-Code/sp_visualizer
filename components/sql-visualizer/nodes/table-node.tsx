@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Table2, Key, Link, Code2, Target, Zap } from 'lucide-react'
+import { Table2, Key, Link, Code2, Target, Zap, Shield, ShieldOff } from 'lucide-react'
 import type { TableNodeData } from '@/lib/sql-types'
 
 
@@ -25,6 +25,10 @@ function generateTableSQL(table: TableNodeData['table']): string {
   lines.push(columnDefs.join(',\n'))
   lines.push(');')
   
+  if (table.rlsEnabled) {
+    lines.push(`\nALTER TABLE ${table.schema !== 'public' ? `${table.schema}.` : ''}${table.name} ENABLE ROW LEVEL SECURITY;`)
+  }
+  
   return lines.join('\n')
 }
 
@@ -46,6 +50,15 @@ function TableNodeComponent({ id, data, selected }: NodeProps) {
         <span className={`font-semibold ${isSolo ? 'text-amber-100' : 'text-blue-100'}`}>{table.name}</span>
         {table.schema !== 'public' && (
           <span className={`text-xs ${isSolo ? 'text-amber-300/70' : 'text-blue-300/70'}`}>{table.schema}</span>
+        )}
+        {table.rlsEnabled ? (
+          <span title="Row Level Security Enabled">
+            <Shield className="h-3 w-3 text-green-400" />
+          </span>
+        ) : (
+          <span title="Row Level Security Disabled - No ENABLE RLS statement found">
+            <ShieldOff className="h-3 w-3 text-red-500" />
+          </span>
         )}
         <div className="ml-auto flex items-center gap-1">
           {onImpactAnalysis && (

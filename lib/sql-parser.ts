@@ -158,8 +158,9 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
     tables.push({
       id: generateId('table'),
       name: tableName,
-      schema,
+      schema: schema || 'public',
       columns,
+      rlsEnabled: false,
     })
   }
   
@@ -542,6 +543,27 @@ function parseExtensions(sql: string): ParsedExtension[] {
   return extensions
 }
 
+// Parse RLS status
+function parseRLSStatus(sql: string, tables: ParsedTable[]) {
+  const rlsRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s+(ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY/gi
+  
+  let match
+  while ((match = rlsRegex.exec(sql)) !== null) {
+    const tableSchema = match[1] || 'public'
+    const tableName = match[2]
+    const action = match[3].toUpperCase()
+    
+    const table = tables.find(t => 
+      t.name.toLowerCase() === tableName.toLowerCase() && 
+      t.schema.toLowerCase() === tableSchema.toLowerCase()
+    )
+    
+    if (table) {
+      table.rlsEnabled = action === 'ENABLE'
+    }
+  }
+}
+
 // Main parser function
 export function parseSQL(sql: string): ParsedSchema {
   resetIdCounter()
@@ -564,6 +586,9 @@ export function parseSQL(sql: string): ParsedSchema {
   
   // Parse ALTER TABLE ... ADD FOREIGN KEY (out-of-line FK definitions)
   parseAlterTableForeignKeys(cleanedSql, tables, foreignKeys)
+  
+  // Parse RLS status
+  parseRLSStatus(cleanedSql, tables)
   
   const enumUsages = findEnumUsages(tables, enums)
   const functionCalls = findFunctionCalls(functions)
@@ -601,6 +626,9 @@ CREATE TABLE users (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Enable RLS on users table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Posts table
 CREATE TABLE posts (
@@ -642,11 +670,6 @@ CREATE TRIGGER posts_updated_at
   BEFORE UPDATE ON posts
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
-
--- Enable RLS
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for users
 CREATE POLICY users_select_own ON users

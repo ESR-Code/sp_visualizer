@@ -20,6 +20,7 @@ export interface ParsedTable {
   name: string
   schema: string
   columns: Column[]
+  rlsEnabled?: boolean
 }
 
 export interface ParsedEnum {
