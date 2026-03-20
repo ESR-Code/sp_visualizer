@@ -18,7 +18,8 @@ import { SqlInput } from '@/components/sql-visualizer/sql-input'
 import { FlowDiagram, type FlowDiagramRef } from '@/components/sql-visualizer/flow-diagram'
 import { parseSQL } from '@/lib/sql-parser'
 import type { ParsedSchema } from '@/lib/sql-types'
-import { Database, GitBranch, Download, Camera, FileCode, FileText, ChevronDown } from 'lucide-react'
+import { Database, GitBranch, Download, Camera, FileCode, FileText, ChevronDown, BarChart3 } from 'lucide-react'
+import { AnalysisDrawer } from '@/components/sql-visualizer/analysis-drawer'
 
 export default function Home() {
   const [sqlCode, setSqlCode] = useState('')
@@ -33,6 +34,7 @@ export default function Home() {
   } | null>(null)
 
   const [soloNodeId, setSoloNodeId] = useState<string | null>(null)
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false)
   const flowRef = useRef<FlowDiagramRef>(null)
 
   const handleExportScreenshot = useCallback(() => {
@@ -144,7 +146,16 @@ export default function Home() {
           )}
 
           {schema && (
-            <DropdownMenu>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => setIsAnalysisOpen(true)}
+                variant="outline" 
+                className="h-9 border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              >
+                <BarChart3 className="mr-2 h-4 w-4 text-blue-400" />
+                Analysis
+              </Button>
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="h-9 border-zinc-700 bg-zinc-900 px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-white">
                   <Download className="mr-2 h-4 w-4" />
@@ -177,6 +188,7 @@ export default function Home() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           )}
         </div>
       </header>
@@ -215,6 +227,12 @@ export default function Home() {
           <span>Supports CREATE TABLE, CREATE TYPE (ENUM), CREATE FUNCTION, CREATE TRIGGER, CREATE POLICY</span>
         </div>
       </footer>
+
+      <AnalysisDrawer
+        isOpen={isAnalysisOpen}
+        onClose={() => setIsAnalysisOpen(false)}
+        schema={schema}
+      />
     </div>
   )
 }
