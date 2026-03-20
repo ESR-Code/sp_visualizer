@@ -23,6 +23,7 @@ import { FunctionNode } from './nodes/function-node'
 import { TriggerNode } from './nodes/trigger-node'
 import { PolicyNode } from './nodes/policy-node'
 import { ViewNode } from './nodes/view-node'
+import { ExtensionNode } from './nodes/extension-node'
 import { Legend, type VisibilityState } from './legend'
 import { CodeModal } from './code-modal'
 import { ImpactModal } from './impact-modal'
@@ -36,6 +37,7 @@ const nodeTypes = {
   trigger: TriggerNode,
   policy: PolicyNode,
   view: ViewNode,
+  extension: ExtensionNode,
   group: ({ data }: { data: { label: string } }) => (
     <div className="h-full w-full rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/40 p-4">
       <div className="text-xs font-bold uppercase tracking-wider text-zinc-500">{data.label}</div>
@@ -56,6 +58,7 @@ const defaultVisibility: VisibilityState = {
   trigger: true,
   policy: true,
   view: true,
+  extension: true,
   foreignKey: true,
   group: true,
 }
@@ -273,6 +276,7 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
         trigger: false,
         policy: false,
         view: false,
+        extension: false,
         foreignKey: false,
         group: true,
         [type]: true,
@@ -420,6 +424,7 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
                      case 'trigger': colorClass = 'text-orange-400'; bgClass = 'bg-orange-400/10'; break
                      case 'policy': colorClass = 'text-red-400'; bgClass = 'bg-red-400/10'; break
                      case 'view': colorClass = 'text-teal-400'; bgClass = 'bg-teal-400/10'; break
+                     case 'extension': colorClass = 'text-indigo-400'; bgClass = 'bg-indigo-400/10'; break
                    }
                    
                    return (
@@ -478,6 +483,10 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
                 return '#ef4444'
               case 'view':
                 return '#14b8a6'
+              case 'extension':
+                return '#6366f1'
+              case 'group':
+                return '#27272a'
               default:
                 return '#71717a'
             }

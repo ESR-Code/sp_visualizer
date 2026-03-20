@@ -11,5 +11,6 @@
 - [ ] Add function analysis , show impact of drop function
 - [ ] For RLS policies , Show “effective access” simulation (e.g., what anon can actually read)
 - [ ] Circular dependency detection
+- [x] Add extension nodes
 
 

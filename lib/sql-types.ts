@@ -97,6 +97,13 @@ export interface ParsedView {
   code: string
 }
 
+export interface ParsedExtension {
+  id: string
+  name: string
+  schema: string
+  version?: string
+}
+
 export interface ParsedSchema {
   tables: ParsedTable[]
   enums: ParsedEnum[]
@@ -107,10 +114,11 @@ export interface ParsedSchema {
   enumUsages: EnumUsage[]
   functionCalls: FunctionCall[]
   views: ParsedView[]
+  extensions: ParsedExtension[]
 }
 
 // Node types for React Flow
-export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'group' | 'view'
+export type NodeType = 'table' | 'enum' | 'function' | 'trigger' | 'policy' | 'group' | 'view' | 'extension'
 
 export interface BaseNodeData {
   label: string
@@ -142,6 +150,10 @@ export interface PolicyNodeData extends BaseNodeData {
 
 export interface ViewNodeData extends BaseNodeData {
   view: ParsedView
+}
+
+export interface ExtensionNodeData extends BaseNodeData {
+  extension: ParsedExtension
 }
 
 // Edge types

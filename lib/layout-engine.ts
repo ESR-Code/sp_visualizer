@@ -9,6 +9,7 @@ const NODE_DIMENSIONS = {
   trigger: { width: 200, height: 120 },
   policy: { width: 240, height: 120 },
   view: { width: 320, height: 150 },
+  extension: { width: 180, height: 100 },
 }
 
 export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; edges: Edge[] } {
@@ -72,6 +73,16 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
       type: 'view',
       position: { x: 0, y: 0 },
       data: { label: view.name, view },
+    })
+  })
+  
+  // Create extension nodes
+  schema.extensions.forEach((ext) => {
+    nodes.push({
+      id: ext.id,
+      type: 'extension',
+      position: { x: 0, y: 0 },
+      data: { label: ext.name, extension: ext },
     })
   })
 

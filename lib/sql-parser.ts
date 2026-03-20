@@ -10,6 +10,7 @@ import {
   FunctionCall,
   Column,
   ParsedView,
+  ParsedExtension,
 } from './sql-types'
 
 // Generate unique IDs
@@ -523,6 +524,24 @@ function parseViews(sql: string): ParsedView[] {
   return views
 }
 
+// Parse extensions
+function parseExtensions(sql: string): ParsedExtension[] {
+  const extensions: ParsedExtension[] = []
+  // Matches: CREATE EXTENSION [IF NOT EXISTS] name [WITH SCHEMA schema] [VERSION version]
+  const extensionRegex = /CREATE\s+EXTENSION\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?([^"'\s;]+)["']?(?:\s+WITH)?(?:\s+SCHEMA\s+["']?([^"'\s;]+)["']?)?(?:\s+VERSION\s+["']?([^"'\s;]+)["']?)?/gi
+  
+  let match
+  while ((match = extensionRegex.exec(sql)) !== null) {
+    extensions.push({
+      id: generateId('ext'),
+      name: match[1].replace(/["']/g, ''),
+      schema: match[2]?.replace(/["']/g, '') || 'public',
+      version: match[3]?.replace(/["']/g, ''),
+    })
+  }
+  return extensions
+}
+
 // Main parser function
 export function parseSQL(sql: string): ParsedSchema {
   resetIdCounter()
@@ -538,6 +557,7 @@ export function parseSQL(sql: string): ParsedSchema {
   const triggers = parseTriggers(cleanedSql)
   const policies = parsePolicies(cleanedSql)
   const views = parseViews(cleanedSql)
+  const extensions = parseExtensions(cleanedSql)
   
   // Mark disabled triggers
   parseDisabledTriggers(cleanedSql, triggers)
@@ -558,11 +578,15 @@ export function parseSQL(sql: string): ParsedSchema {
     enumUsages,
     functionCalls,
     views,
+    extensions,
   }
 }
 
 // Example SQL for testing
-export const exampleSQL = `-- Create enum type for user status
+export const exampleSQL = `-- Extensions
+CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
+
+-- Create enum type for user status
 CREATE TYPE user_status AS ENUM ('active', 'inactive', 'pending', 'banned');
 
 -- Create enum type for post status
