@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { AlertTriangle, Table2, Eye, Zap, Shield, Link2 } from 'lucide-react'
+import { AlertTriangle, Table2, Eye, Zap, Shield, Link2, RefreshCw } from 'lucide-react'
 import type { ParsedSchema, ParsedTable } from '@/lib/sql-types'
 
 interface ImpactModalProps {
@@ -25,6 +25,13 @@ interface ImpactModalProps {
   onClose: () => void
   schema: ParsedSchema | null
   table: ParsedTable | null
+}
+
+interface CascadeImpact {
+  tableName: string
+  columnName: string
+  action: 'DELETE' | 'UPDATE'
+  type: string
 }
 
 export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps) {
@@ -118,6 +125,34 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
     return impacts
   }, [schema, table, selectedColumn])
 
+  const cascadeImpacts = useMemo(() => {
+    if (!schema || !table) return []
+    const impacts: CascadeImpact[] = []
+    
+    schema.foreignKeys.forEach(fk => {
+      if (fk.targetTable === table.name) {
+        if (fk.onDelete && fk.onDelete !== 'NO ACTION' && fk.onDelete !== 'RESTRICT') {
+          impacts.push({
+            tableName: fk.sourceTable,
+            columnName: fk.sourceColumn,
+            action: 'DELETE',
+            type: fk.onDelete
+          })
+        }
+        if (fk.onUpdate && fk.onUpdate !== 'NO ACTION' && fk.onUpdate !== 'RESTRICT') {
+          impacts.push({
+            tableName: fk.sourceTable,
+            columnName: fk.sourceColumn,
+            action: 'UPDATE',
+            type: fk.onUpdate
+          })
+        }
+      }
+    })
+    
+    return impacts
+  }, [schema, table])
+
   if (!table) return null
 
   return (
@@ -135,12 +170,15 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
         </DialogHeader>
 
         <Tabs defaultValue="table" className="mt-4">
-          <TabsList className="grid w-full grid-cols-2 border border-zinc-800 bg-zinc-950/50">
+          <TabsList className="grid w-full grid-cols-3 border border-zinc-800 bg-zinc-950/50">
             <TabsTrigger value="table" className="data-[state=active]:bg-zinc-800 text-zinc-100">
               Drop Table
             </TabsTrigger>
             <TabsTrigger value="column" className="data-[state=active]:bg-zinc-800 text-zinc-100">
               Drop Field
+            </TabsTrigger>
+            <TabsTrigger value="cascade" className="data-[state=active]:bg-zinc-800 text-zinc-100">
+              Cascade
             </TabsTrigger>
           </TabsList>
 
@@ -221,6 +259,81 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
                 </div>
               )}
             </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="cascade" className="mt-6">
+            <div className="mb-4 text-sm text-zinc-400">
+              Relationships that trigger automatic actions when data in <code className="text-zinc-200">{table.name}</code> is modified:
+            </div>
+
+            {cascadeImpacts.length > 0 ? (
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-6">
+                  {/* Delete Cascades */}
+                  {cascadeImpacts.some(i => i.action === 'DELETE') && (
+                    <div className="space-y-3">
+                      <h4 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-red-400 uppercase">
+                        <AlertTriangle className="h-3 w-3" />
+                        On Delete Impacts
+                      </h4>
+                      <div className="grid gap-2">
+                        {cascadeImpacts.filter(i => i.action === 'DELETE').map((impact, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                            <div className="flex items-center gap-3">
+                              <div className="rounded bg-red-500/10 p-1.5 text-red-500">
+                                <Table2 className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-zinc-100">{impact.tableName}</div>
+                                <div className="text-xs text-zinc-500">via {impact.columnName}</div>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="border-red-500/30 bg-red-500/5 text-[10px] text-red-400">
+                              {impact.type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Update Cascades */}
+                  {cascadeImpacts.some(i => i.action === 'UPDATE') && (
+                    <div className="space-y-3">
+                      <h4 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-blue-400 uppercase">
+                        <RefreshCw className="h-3 w-3" />
+                        On Update Impacts
+                      </h4>
+                      <div className="grid gap-2">
+                        {cascadeImpacts.filter(i => i.action === 'UPDATE').map((impact, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+                            <div className="flex items-center gap-3">
+                              <div className="rounded bg-blue-500/10 p-1.5 text-blue-500">
+                                <Table2 className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-zinc-100">{impact.tableName}</div>
+                                <div className="text-xs text-zinc-500">via {impact.columnName}</div>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="border-blue-500/30 bg-blue-500/5 text-[10px] text-blue-400">
+                              {impact.type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 text-zinc-500">
+                <div className="mb-2 rounded-full bg-zinc-900 p-3">
+                  <RefreshCw className="h-6 w-6 opacity-20" />
+                </div>
+                <p className="text-sm">No cascading actions defined for this table</p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 

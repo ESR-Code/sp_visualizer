@@ -62,19 +62,25 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       }
       
       // Table-level CONSTRAINT ... FOREIGN KEY
-      if (/^\s*(CONSTRAINT\s+|FOREIGN\s+KEY)/i.test(trimmed)) {
-        const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
-        if (fkMatch) {
+        const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+        // Try again with update/delete swapped
+        const fkMatchRev = fkMatch ? null : trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+        
+        const fkMatchData = fkMatch || fkMatchRev
+        if (fkMatchData) {
+          const onDelete = fkMatch ? fkMatchData[5] : fkMatchData[6]
+          const onUpdate = fkMatch ? fkMatchData[6] : fkMatchData[5]
+          
           foreignKeys.push({
             id: generateId('fk'),
             sourceTable: tableName,
-            sourceColumn: fkMatch[1],
-            targetTable: fkMatch[3],
-            targetColumn: fkMatch[4],
+            sourceColumn: fkMatchData[1],
+            targetTable: fkMatchData[3],
+            targetColumn: fkMatchData[4],
+            onDelete: onDelete?.toUpperCase(),
+            onUpdate: onUpdate?.toUpperCase(),
           })
         }
-        continue
-      }
       
       // Parse column: "name" type [constraints...]
       const colMatch = trimmed.match(/^["']?([^"'\s]+)["']?\s+(.+)$/i)
@@ -120,18 +126,28 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       }
       
       // Check for inline REFERENCES
-      const refMatch = restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)/i)
-      if (refMatch) {
+      const refMatch = restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+      const refMatchRev = refMatch ? null : restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+      
+      const colRefMatch = refMatch || refMatchRev
+      if (colRefMatch) {
+        const onDelete = refMatch ? colRefMatch[4] : colRefMatch[5]
+        const onUpdate = refMatch ? colRefMatch[5] : colRefMatch[4]
+        
         column.references = {
-          table: refMatch[2],
-          column: refMatch[3],
+          table: colRefMatch[2],
+          column: colRefMatch[3],
+          onDelete: onDelete?.toUpperCase(),
+          onUpdate: onUpdate?.toUpperCase(),
         }
         foreignKeys.push({
           id: generateId('fk'),
           sourceTable: tableName,
           sourceColumn: colName,
-          targetTable: refMatch[2],
-          targetColumn: refMatch[3],
+          targetTable: colRefMatch[2],
+          targetColumn: colRefMatch[3],
+          onDelete: onDelete?.toUpperCase(),
+          onUpdate: onUpdate?.toUpperCase(),
         })
       }
       
@@ -359,16 +375,18 @@ function parseDisabledTriggers(sql: string, triggers: ParsedTrigger[]) {
 // Parse ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY statements
 function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignKeys: ForeignKeyRelation[]) {
   // Match: ALTER TABLE [ONLY] [schema.]table ADD [CONSTRAINT name] FOREIGN KEY (col) REFERENCES [schema.]table(col) [ON ...]
-  const alterFkRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ADD\s+(?:CONSTRAINT\s+["']?[^"'\s]+["']?\s+)?FOREIGN\s+KEY\s*\(\s*["']?([^"'\s),]+)["']?\s*\)\s*REFERENCES\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(\s*["']?([^"'\s)]+)["']?\s*\)/gi
+  const alterFkRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ADD\s+(?:CONSTRAINT\s+["']?[^"'\s]+["']?\s+)?FOREIGN\s+KEY\s*\(\s*["']?([^"'\s),]+)["']?\s*\)\s*REFERENCES\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(\s*["']?([^"'\s)]+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/gi
   
-  let match
-  while ((match = alterFkRegex.exec(sql)) !== null) {
-    const sourceTable = match[2]
-    const sourceColumn = match[3]
-    const targetTable = match[5]
-    const targetColumn = match[6]
+  let alterFkMatch
+  while ((alterFkMatch = alterFkRegex.exec(sql)) !== null) {
+    const sourceTable = alterFkMatch[2]
+    const sourceColumn = alterFkMatch[3]
+    const targetTable = alterFkMatch[5]
+    const targetColumn = alterFkMatch[6]
+    const onDelete = alterFkMatch[7]?.toUpperCase()
+    const onUpdate = alterFkMatch[8]?.toUpperCase()
     
-    // Check for duplicates (same FK might already exist from inline definition)
+    // Check for duplicates
     const isDuplicate = foreignKeys.some(
       fk => fk.sourceTable === sourceTable && 
             fk.sourceColumn === sourceColumn && 
@@ -383,6 +401,8 @@ function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignK
         sourceColumn,
         targetTable,
         targetColumn,
+        onDelete,
+        onUpdate,
       })
     }
     
@@ -394,6 +414,8 @@ function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignK
         column.references = {
           table: targetTable,
           column: targetColumn,
+          onDelete,
+          onUpdate,
         }
       }
     }
@@ -562,7 +584,7 @@ CREATE TABLE posts (
   title TEXT NOT NULL,
   content TEXT,
   status post_status DEFAULT 'draft',
-  author_id UUID NOT NULL REFERENCES users(id),
+  author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

@@ -9,6 +9,8 @@ export interface Column {
   references?: {
     table: string
     column: string
+    onDelete?: string
+    onUpdate?: string
   }
   enumType?: string
 }
@@ -67,6 +69,8 @@ export interface ForeignKeyRelation {
   sourceColumn: string
   targetTable: string
   targetColumn: string
+  onDelete?: string
+  onUpdate?: string
 }
 
 export interface EnumUsage {
