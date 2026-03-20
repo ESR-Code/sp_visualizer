@@ -136,10 +136,10 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
 
         <Tabs defaultValue="table" className="mt-4">
           <TabsList className="grid w-full grid-cols-2 border border-zinc-800 bg-zinc-950/50">
-            <TabsTrigger value="table" className="data-[state=active]:bg-zinc-800">
+            <TabsTrigger value="table" className="data-[state=active]:bg-zinc-800 text-zinc-100">
               Drop Table
             </TabsTrigger>
-            <TabsTrigger value="column" className="data-[state=active]:bg-zinc-800">
+            <TabsTrigger value="column" className="data-[state=active]:bg-zinc-800 text-zinc-100">
               Drop Field
             </TabsTrigger>
           </TabsList>

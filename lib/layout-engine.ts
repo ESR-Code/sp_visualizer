@@ -81,6 +81,18 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
     const targetTable = schema.tables.find((t) => t.name === fk.targetTable)
 
     if (sourceTable && targetTable) {
+      const sourceCol = sourceTable.columns.find(c => c.name === fk.sourceColumn)
+      const targetCol = targetTable.columns.find(c => c.name === fk.targetColumn)
+      
+      let cardinality = 'N:1' // Most common FK relation
+      if (sourceCol?.isPrimaryKey && targetCol?.isPrimaryKey) {
+        cardinality = '1:1'
+      } else if (sourceCol?.isPrimaryKey && !targetCol?.isPrimaryKey) {
+        cardinality = '1:N'
+      } else if (!sourceCol?.isPrimaryKey && !targetCol?.isPrimaryKey) {
+        cardinality = 'N:N' // Rare for direct FK, but can happen if neither is primary (but likely unique)
+      }
+
       edges.push({
         id: fk.id,
         source: sourceTable.id,
@@ -90,7 +102,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
         type: 'smoothstep',
         animated: false,
         style: { stroke: '#3b82f6', strokeWidth: 2 },
-        label: `${fk.sourceColumn} → ${fk.targetColumn}`,
+        label: `${cardinality} (${fk.sourceColumn} → ${fk.targetColumn})`,
         labelStyle: { fill: '#94a3b8', fontSize: 10 },
         labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
         labelBgPadding: [4, 2] as [number, number],
