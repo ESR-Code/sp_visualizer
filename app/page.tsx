@@ -18,8 +18,9 @@ import { SqlInput } from '@/components/sql-visualizer/sql-input'
 import { FlowDiagram, type FlowDiagramRef } from '@/components/sql-visualizer/flow-diagram'
 import { parseSQL } from '@/lib/sql-parser'
 import type { ParsedSchema } from '@/lib/sql-types'
-import { Database, GitBranch, Download, Camera, FileCode, FileText, ChevronDown, BarChart3 } from 'lucide-react'
+import { Database, GitBranch, Download, Camera, FileCode, FileText, ChevronDown, BarChart3, HelpCircle } from 'lucide-react'
 import { AnalysisDrawer } from '@/components/sql-visualizer/analysis-drawer'
+import { DumpInstructionsModal } from '@/components/sql-visualizer/dump-instructions-modal'
 
 export default function Home() {
   const [sqlCode, setSqlCode] = useState('')
@@ -35,6 +36,7 @@ export default function Home() {
 
   const [soloNodeId, setSoloNodeId] = useState<string | null>(null)
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
   const flowRef = useRef<FlowDiagramRef>(null)
 
   const handleExportScreenshot = useCallback(() => {
@@ -113,6 +115,17 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-6">
+          {/* Help Button */}
+          <Button
+            onClick={() => setIsHelpOpen(true)}
+            variant="ghost"
+            size="sm"
+            className="text-zinc-500 hover:text-zinc-200"
+          >
+            <HelpCircle className="h-4 w-4 mr-2" />
+            How to use
+          </Button>
+
           {/* Solo Mode Indicator */}
           {soloNodeId && (
             <div className="flex items-center gap-2 rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500 animate-pulse">
@@ -232,6 +245,10 @@ export default function Home() {
         isOpen={isAnalysisOpen}
         onClose={() => setIsAnalysisOpen(false)}
         schema={schema}
+      />
+      <DumpInstructionsModal
+        isOpen={isHelpOpen}
+        onOpenChange={setIsHelpOpen}
       />
     </div>
   )
