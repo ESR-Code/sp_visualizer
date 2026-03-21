@@ -58,10 +58,17 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       const trimmed = line.trim()
       if (!trimmed) continue
       
-      // Skip constraint definitions but extract FK info
-      if (/^\s*(PRIMARY\s+KEY|UNIQUE|CHECK)\s*\(/i.test(trimmed)) {
-        continue
+      // Handle multi-column PRIMARY KEY and UNIQUE constraints
+      const pkMatch = trimmed.match(/^PRIMARY\s+KEY\s*\(([\w\s,"']+)\)/i)
+      const uniqueMatch = trimmed.match(/^UNIQUE\s*\(([\w\s,"']+)\)/i)
+      
+      if (pkMatch) {
+         const cols = pkMatch[1].split(',').map(c => c.trim().replace(/["']/g, ''))
+         // We'll mark these columns as PKs for backward compat
+         columns.forEach(c => { if (cols.includes(c.name)) c.isPrimaryKey = true })
+         continue
       }
+      if (uniqueMatch) continue
       
       // Table-level CONSTRAINT ... FOREIGN KEY
         const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/i)
@@ -661,6 +668,25 @@ export function parseSQL(sql: string): ParsedSchema {
   const views = parseViews(cleanedSql)
   const extensions = parseExtensions(cleanedSql)
   const indexes = parseIndexes(cleanedSql)
+  
+  // Add implicit indexes from constraints (PK / UNIQUE)
+  tables.forEach(t => {
+    // PK Index
+    const pkCols = t.columns.filter(c => c.isPrimaryKey).map(c => c.name)
+    if (pkCols.length > 0) {
+      if (!indexes.some(idx => idx.tableName === t.name && idx.isUnique && JSON.stringify(idx.columns) === JSON.stringify(pkCols))) {
+        indexes.push({
+          id: generateId('idx-pk'),
+          name: `${t.name}_pkey`,
+          tableName: t.name,
+          tableSchema: t.schema,
+          isUnique: true,
+          columns: pkCols,
+          method: 'btree'
+        })
+      }
+    }
+  })
   
   // Mark disabled triggers
   parseDisabledTriggers(cleanedSql, triggers)

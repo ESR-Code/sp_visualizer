@@ -286,23 +286,99 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
        severity: 'info'
     }))
 
-    // 6. Missing Index
+    // 6. Advanced Missing Index Audit
     schema!.foreignKeys.forEach(fk => {
       const table = schema!.tables.find(t => t.name.toLowerCase() === fk.sourceTable.toLowerCase())
       if (table?.columns.find(c => c.name.toLowerCase() === fk.sourceColumn.toLowerCase())?.isPrimaryKey) return
       
-      const hasIndex = (schema!.indexes || []).some(idx => 
+      const idxAtPrefix = (schema!.indexes || []).find(idx => 
+        idx.tableName.toLowerCase() === fk.sourceTable.toLowerCase() && 
+        idx.columns[0].toLowerCase() === fk.sourceColumn.toLowerCase()
+      )
+      
+      const hasIndexSomewhere = (schema!.indexes || []).some(idx => 
         idx.tableName.toLowerCase() === fk.sourceTable.toLowerCase() && 
         idx.columns.some(col => col.toLowerCase() === fk.sourceColumn.toLowerCase())
       )
       
-      if (!hasIndex) {
-        results['missing-index'].push({
-          title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
-          message: `The foreign key column '${fk.sourceColumn}' is missing an index. Foreign keys should be indexed to ensure fast joins and efficient cascading deletions.`,
-          severity: 'warning',
-          after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
-        })
+      if (!idxAtPrefix) {
+        if (hasIndexSomewhere) {
+          results['missing-index'].push({
+            title: `Suboptimal Index: ${fk.sourceTable}.${fk.sourceColumn}`,
+            message: `[Composite Prefixing] The column is part of a composite index but is not the leading column. Foreign keys are most effective when they are the index prefix.`,
+            severity: 'warning',
+            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+          })
+        } else {
+          results['missing-index'].push({
+            title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
+            message: `[Unindexed FK] This foreign key lacks a B-Tree index, which is essential for fast joins and efficient cascading deletes.`,
+            severity: 'error',
+            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+          })
+        }
+      }
+    })
+
+    // Additional Performance Heuristics
+    schema!.tables.forEach(table => {
+      const cols = table.columns
+      const indexes = (schema!.indexes || []).filter(idx => idx.tableName.toLowerCase() === table.name.toLowerCase())
+
+      // Soft Deletes
+      const softDeleteCol = cols.find(c => ['deleted_at', 'is_deleted', 'archived_at'].includes(c.name.toLowerCase()))
+      if (softDeleteCol) {
+        const hasIdx = indexes.some(idx => idx.columns.includes(softDeleteCol.name) || (idx.where && idx.where.toLowerCase().includes(softDeleteCol.name.toLowerCase())))
+        if (!hasIdx) {
+          results['missing-index'].push({
+            title: `Soft Delete: ${table.name}`,
+            message: `[Partial Indexing] Detected soft-delete column '${softDeleteCol.name}'. A partial index (WHERE ${softDeleteCol.name} IS NULL) is recommended for better performance.`,
+            severity: 'info',
+            after: `CREATE INDEX ON "${table.name}" (created_at) WHERE ${softDeleteCol.name} IS NULL;`
+          })
+        }
+      }
+
+      // JSONB Search
+      const jsonbCol = cols.find(c => c.type.toLowerCase() === 'jsonb')
+      if (jsonbCol) {
+        const hasGin = indexes.some(idx => idx.method === 'gin' && idx.columns.includes(jsonbCol.name))
+        if (!hasGin) {
+          results['missing-index'].push({
+            title: `JSONB Search: ${table.name}.${jsonbCol.name}`,
+            message: `[Missing GIN] JSONB columns should have a GIN index to enable efficient internal data searching.`,
+            severity: 'info',
+            after: `CREATE INDEX ON "${table.name}" USING gin ("${jsonbCol.name}");`
+          })
+        }
+      }
+
+      // High-Cardinality Filters
+      const highCardCols = cols.filter(c => ['email', 'slug', 'username', 'sku', 'slug'].includes(c.name.toLowerCase()))
+      highCardCols.forEach(col => {
+         if (!indexes.some(idx => idx.columns.includes(col.name))) {
+           results['missing-index'].push({
+              title: `Critical Filter: ${table.name}.${col.name}`,
+              message: `[High Cardinality] Columns like '${col.name}' are likely high-filter candidates and should be indexed.`,
+              severity: 'warning',
+              after: `CREATE UNIQUE INDEX ON "${table.name}" ("${col.name}");`
+           })
+         }
+      })
+
+      // Polymorphic Patterns
+      const typeCol = cols.find(c => ['type', 'entity_type', 'resource_type'].includes(c.name.toLowerCase()))
+      const idCol = cols.find(c => ['id', 'entity_id', 'resource_id', 'ref_id'].includes(c.name.toLowerCase()))
+      if (typeCol && idCol && typeCol.name !== idCol.name) {
+        const hasIdx = indexes.some(idx => idx.columns.includes(typeCol.name) && idx.columns.includes(idCol.name))
+        if (!hasIdx) {
+          results['missing-index'].push({
+            title: `Polymorphic Relationship: ${table.name}`,
+            message: `[Polymorphic Type] Found type/id pair. A composite index on (${typeCol.name}, ${idCol.name}) is recommended for polymorphic queries.`,
+            severity: 'info',
+            after: `CREATE INDEX ON "${table.name}" ("${typeCol.name}", "${idCol.name}");`
+          })
+        }
       }
     })
 
