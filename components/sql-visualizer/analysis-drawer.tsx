@@ -202,24 +202,38 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       const isSelf = cycle.length === 2 && cycle[0] === cycle[1]
       const isDirect = cycle.length === 3 && cycle[0] === cycle[2]
       
+      const getFkCol = (source: string, target: string) => {
+        const fk = schema.foreignKeys.find(f => 
+          f.sourceTable.toLowerCase() === source.toLowerCase() && 
+          f.targetTable.toLowerCase() === target.toLowerCase()
+        )
+        return fk ? fk.sourceColumn : 'foreign_key_column'
+      }
+
       if (isSelf) {
         return {
           title: `Self-Reference: ${cycle[0]}`,
-          message: `Table '${cycle[0]}' references itself. This is common in parent/child hierarchies (like categories) and is usually safe.`,
-          severity: 'info'
+          message: `Table '${cycle[0]}' references itself. This is common in parent/child hierarchies and is usually safe.`,
+          severity: 'info',
+          after: `-- Recommendation: Ensure the self-referencing column is NULLABLE\nALTER TABLE "${cycle[0]}" ALTER COLUMN "${getFkCol(cycle[0], cycle[0])}" DROP NOT NULL;`
         }
       }
       if (isDirect) {
+        const colA = getFkCol(cycle[0], cycle[1])
         return {
           title: `Direct Cycle: ${cycle[0]} ↔ ${cycle[1]}`,
-          message: `Mutual dependency detected between '${cycle[0]}' and '${cycle[1]}'. High risk for inserts: you cannot easily insert rows into either table without disabling constraints or using nullable FKs.`,
-          severity: 'error'
+          message: `Mutual dependency detected between '${cycle[0]}' and '${cycle[1]}'. This creates a deadlock during initial record insertion.`,
+          severity: 'error',
+          after: `-- Solution 1: Use DEFERRABLE Constraints\nALTER TABLE "${cycle[0]}" \n  ADD CONSTRAINT "${cycle[0]}_${colA}_fkey" \n  FOREIGN KEY ("${colA}") REFERENCES "${cycle[1]}"("id")\n  DEFERRABLE INITIALLY DEFERRED;\n\n-- Solution 2: Make the column NULLABLE\nALTER TABLE "${cycle[0]}" ALTER COLUMN "${colA}" DROP NOT NULL;`
         }
       }
+      
+      const firstCol = getFkCol(cycle[0], cycle[1])
       return {
         title: `Indirect Loop: ${cycle.join(' → ')}`,
-        message: `A multi-table circular dependency was detected. High risk for cascading deletes and complex migrations.`,
-        severity: 'error'
+        message: `A complex multi-table circular dependency was detected. This complicates cascading deletes and data operations.`,
+        severity: 'error',
+        after: `-- Solution: Use DEFERRABLE constraints for the cycle entry point\nALTER TABLE "${cycle[0]}" \n  ADD CONSTRAINT "${cycle[0]}_${firstCol}_fkey" \n  FOREIGN KEY ("${firstCol}") REFERENCES "${cycle[1]}"("id")\n  DEFERRABLE INITIALLY DEFERRED;`
       }
     })
 
