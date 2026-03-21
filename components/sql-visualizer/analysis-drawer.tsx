@@ -15,10 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ShieldAlert, Zap, RefreshCw, Search, AlertCircle, CheckCircle2, Info, RotateCcw, Activity, Layers } from 'lucide-react'
+import { ShieldAlert, Zap, RefreshCw, Search, AlertCircle, CheckCircle2, Info, RotateCcw, Activity, Layers, Copy, ClipboardCheck } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
+import { highlightSQL } from '@/lib/sql-highlighter'
 import type { ParsedSchema } from '@/lib/sql-types'
 
 interface AnalysisDrawerProps {
@@ -38,7 +39,7 @@ const ANALYSIS_TYPES = [
   {
     id: 'performance',
     title: 'Performance Optimization',
-    description: "Scans RLS policies for raw auth.uid() calls and suggests subquery wrapping to improve query execution speed via Postgres caching.",
+    description: "Wrapping auth.uid() in a subquery allows Postgres to cache the ID, preventing it from being re-executed for every row.",
     icon: Zap,
     color: 'text-amber-400',
   },
@@ -71,6 +72,36 @@ const ANALYSIS_TYPES = [
     color: 'text-emerald-400',
   },
 ]
+interface AnalysisResult {
+  title: string
+  message: string
+  severity: 'info' | 'warning' | 'error' | 'success'
+  before?: string
+  after?: string
+}
+
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false)
+  
+  const handleCopy = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6 text-zinc-400 hover:text-zinc-100 transition-colors"
+      onClick={handleCopy}
+    >
+      {copied ? <ClipboardCheck className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+    </Button>
+  )
+}
 
 export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps) {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>(ANALYSIS_TYPES[0].id)
@@ -88,19 +119,57 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
     ANALYSIS_TYPES.find(t => t.id === selectedAnalysis) || ANALYSIS_TYPES[0]
   , [selectedAnalysis])
 
-  // Simple demo results for now (placeholders)
-  const results = useMemo(() => {
+  const results = useMemo<AnalysisResult[]>(() => {
     if (!schema) return []
     
-    // In a real implementation, we'd run actual logic here
-    // For now, I'll return some static advice based on the schema
-    return [
-      {
-        title: 'Draft implementation',
-        message: 'This analysis is being initialized. Real scanning of your schema will appear here shortly.',
-        severity: 'info' as const
-      }
-    ]
+    if (selectedAnalysis === 'performance') {
+      const wrapUid = (expr: string) => expr.replace(/(?<!\(\s*select\s+)auth\.uid\(\)/gi, '(select auth.uid())');
+      const hasRawUid = (expr: string) => /(?<!\(\s*select\s+)auth\.uid\(\)/i.test(expr);
+
+      return schema.policies
+        .filter(p => {
+          const exprs = [p.usingExpression, p.withCheckExpression].filter(Boolean) as string[]
+          return exprs.some(hasRawUid)
+        })
+        .map(p => {
+          const roleStr = p.roles.length > 0 ? `TO ${p.roles.join(', ')}` : ''
+          const asType = p.permissive ? '' : 'AS RESTRICTIVE '
+          
+          const beforeParts = []
+          if (p.usingExpression) beforeParts.push(`  USING (${p.usingExpression})`)
+          if (p.withCheckExpression) beforeParts.push(`  WITH CHECK (${p.withCheckExpression})`)
+          
+          const afterParts = []
+          if (p.usingExpression) afterParts.push(`  USING (${wrapUid(p.usingExpression)})`)
+          if (p.withCheckExpression) afterParts.push(`  WITH CHECK (${wrapUid(p.withCheckExpression)})`)
+
+          return {
+            title: `Policy: ${p.name}`,
+            message: `Wrapping auth.uid() in a subquery allows Postgres to cache the ID, preventing it from being re-executed for every row.`,
+            severity: 'warning',
+            before: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${beforeParts.join('\n')};`,
+            after: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${afterParts.join('\n')};`
+          }
+        })
+    }
+
+    if (selectedAnalysis === 'rls') {
+      const tablesWithPolicies = new Set(schema.policies.map(p => p.tableName))
+      return schema.tables
+        .filter(t => tablesWithPolicies.has(t.name) && !t.rlsEnabled)
+        .map(t => ({
+          title: `Security Alert: ${t.name}`,
+          message: `This table has policies defined but Row Level Security is not enabled. Data remains publicly accessible until RLS is activated.`,
+          severity: 'error',
+          after: `ALTER TABLE "${t.name}" ENABLE ROW LEVEL SECURITY;`
+        }))
+    }
+
+    if (selectedAnalysis === 'indexes') {
+       return []
+    }
+    
+    return []
   }, [schema, selectedAnalysis])
 
   return (
@@ -166,29 +235,68 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
           </div>
 
           <div className="flex-1 overflow-hidden px-6 pt-4">
-            <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-zinc-500">Analysis Results</h3>
+            <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-zinc-500">
+              Analysis Results {results.length > 0 && `(${results.length})`}
+            </h3>
             
-            <ScrollArea className="h-[calc(100vh-400px)]">
-              <div className="space-y-4 pr-4">
-                {results.map((res, i) => (
-                  <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-4 w-4 text-amber-500" />
-                      <div>
-                        <div className="text-sm font-medium text-zinc-200">{res.title}</div>
-                        <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{res.message}</p>
+            <ScrollArea className="h-[calc(100vh-440px)]">
+              <div className="space-y-6 pr-6 pb-20">
+                {results.length > 0 ? (
+                  results.map((res, i) => (
+                    <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 hover:bg-zinc-900/60 transition-colors">
+                      <div className="flex items-start gap-4">
+                        {res.severity === 'error' ? (
+                          <ShieldAlert className="mt-1 h-4 w-4 text-red-500 shrink-0" />
+                        ) : res.severity === 'warning' ? (
+                          <AlertCircle className="mt-1 h-4 w-4 text-amber-500 shrink-0" />
+                        ) : res.severity === 'info' ? (
+                          <Info className="mt-1 h-4 w-4 text-blue-400 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="mt-1 h-4 w-4 text-emerald-500 shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-zinc-200">
+                            {`${i + 1}. `}{res.title}
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-500 leading-relaxed font-normal">{res.message}</p>
+                          
+                          {res.before && (
+                             <div className="mt-5 space-y-3">
+                               <div className="flex items-center justify-between gap-4">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">Current Statement</span>
+                               </div>
+                               <div className="rounded-lg border border-red-900/30 bg-red-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-300">
+                                 {highlightSQL(res.before)}
+                               </div>
+                             </div>
+                          )}
+
+                          {res.after && (
+                             <div className="mt-6 space-y-3">
+                               <div className="flex items-center justify-between gap-4">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/80">Optimized Recommendation</span>
+                                  <div className="shrink-0 pr-0.5">
+                                    <CopyButton text={res.after} />
+                                  </div>
+                               </div>
+                               <div className="rounded-lg border border-emerald-900/30 bg-emerald-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-100">
+                                 {highlightSQL(res.after)}
+                               </div>
+                             </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 p-8 text-center text-zinc-500">
+                    <div className="mb-3 rounded-full bg-zinc-900 p-3">
+                      <currentAnalysis.icon className="h-6 w-6 opacity-20" />
+                    </div>
+                    <p className="text-sm font-medium">No issues found</p>
+                    <p className="mt-1 text-xs opacity-60">Scanning is complete and your schema looks good for this check.</p>
                   </div>
-                ))}
-
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 p-8 text-center text-zinc-500">
-                  <div className="mb-3 rounded-full bg-zinc-900 p-3">
-                    <currentAnalysis.icon className="h-6 w-6 opacity-20" />
-                  </div>
-                  <p className="text-sm font-medium">Ready for deep scan</p>
-                  <p className="mt-1 text-xs opacity-60">Full automated logic for {currentAnalysis.title} is coming in the next update.</p>
-                </div>
+                )}
               </div>
             </ScrollArea>
           </div>
