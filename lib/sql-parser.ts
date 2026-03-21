@@ -570,7 +570,7 @@ function parseIndexes(sql: string): ParsedIndex[] {
   const indexes: ParsedIndex[] = []
   
   // CREATE [UNIQUE] INDEX [IF NOT EXISTS] name ON [schema.]table [USING method] (column, ...) [WHERE ...]
-  const indexRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?(?:\s+USING\s+(\w+))?\s*\(([\s\S]*?)\)(?:\s+WHERE\s*\(([\s\S]*?)\))?/gi
+  const indexRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?(?:\s+USING\s+["']?(\w+)["']?)?\s*\(([\s\S]*?)\)(?:\s+WHERE\s*\(([\s\S]*?)\))?/gi
   
   let match
   while ((match = indexRegex.exec(sql)) !== null) {

@@ -248,19 +248,24 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
     // 5. Indexes
     results.indexes = (schema.indexes || []).map(idx => ({
        title: `Index: ${idx.name}`,
-       message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}'.`,
+       message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}' involving columns (${idx.columns.join(', ')})${idx.where ? ` WHERE ${idx.where}` : ''}.`,
        severity: 'info'
     }))
 
     // 6. Missing Index
     schema.foreignKeys.forEach(fk => {
-      const table = schema.tables.find(t => t.name === fk.sourceTable)
-      if (table?.columns.find(c => c.name === fk.sourceColumn)?.isPrimaryKey) return
-      const hasIndex = (schema.indexes || []).some(idx => idx.tableName === fk.sourceTable && idx.columns[0] === fk.sourceColumn)
+      const table = schema.tables.find(t => t.name.toLowerCase() === fk.sourceTable.toLowerCase())
+      if (table?.columns.find(c => c.name.toLowerCase() === fk.sourceColumn.toLowerCase())?.isPrimaryKey) return
+      
+      const hasIndex = (schema.indexes || []).some(idx => 
+        idx.tableName.toLowerCase() === fk.sourceTable.toLowerCase() && 
+        idx.columns.some(col => col.toLowerCase() === fk.sourceColumn.toLowerCase())
+      )
+      
       if (!hasIndex) {
         results['missing-index'].push({
           title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
-          message: `Foreign key column is missing an index.`,
+          message: `The foreign key column '${fk.sourceColumn}' is missing an index. Foreign keys should be indexed to ensure fast joins and efficient cascading deletions.`,
           severity: 'warning',
           after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
         })
