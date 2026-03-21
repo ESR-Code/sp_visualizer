@@ -11,6 +11,8 @@ export interface Column {
     column: string
     onDelete?: string
     onUpdate?: string
+    isDeferrable?: boolean
+    initiallyDeferred?: boolean
   }
   enumType?: string
 }
@@ -73,6 +75,8 @@ export interface ForeignKeyRelation {
   targetColumn: string
   onDelete?: string
   onUpdate?: string
+  isDeferrable?: boolean
+  initiallyDeferred?: boolean
 }
 
 export interface EnumUsage {

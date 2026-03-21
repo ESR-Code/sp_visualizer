@@ -198,12 +198,31 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
     const uniqueCycles = Array.from(new Set(foundCycles.map(c => c.join('->'))))
       .map(s => s.split('->'))
 
-    results.circular = uniqueCycles.map(cycle => {
+    results.circular = uniqueCycles.filter(cycle => {
+      const hasDeferrableOrNullableLink = cycle.some((table, i) => {
+        if (i === cycle.length - 1) return false
+        const nextTable = cycle[i + 1]
+        const fk = schema!.foreignKeys.find(f => 
+          f.sourceTable.toLowerCase() === table.toLowerCase() && 
+          f.targetTable.toLowerCase() === nextTable.toLowerCase()
+        )
+        
+        const isDeferrable = fk?.isDeferrable && fk?.initiallyDeferred
+        
+        // Find the column involved to check nullability
+        const sourceTable = schema!.tables.find(t => t.name.toLowerCase() === table.toLowerCase())
+        const sourceCol = sourceTable?.columns.find(c => c.name.toLowerCase() === fk?.sourceColumn.toLowerCase())
+        const isNullable = sourceCol && !sourceCol.isNotNull
+
+        return isDeferrable || isNullable
+      })
+      return !hasDeferrableOrNullableLink
+    }).map(cycle => {
       const isSelf = cycle.length === 2 && cycle[0] === cycle[1]
       const isDirect = cycle.length === 3 && cycle[0] === cycle[2]
       
       const getFkCol = (source: string, target: string) => {
-        const fk = schema.foreignKeys.find(f => 
+        const fk = schema!.foreignKeys.find(f => 
           f.sourceTable.toLowerCase() === source.toLowerCase() && 
           f.targetTable.toLowerCase() === target.toLowerCase()
         )
@@ -213,7 +232,7 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       if (isSelf) {
         return {
           title: `Self-Reference: ${cycle[0]}`,
-          message: `Table '${cycle[0]}' references itself. This is common in parent/child hierarchies and is usually safe.`,
+          message: `Table '${cycle[0]}' references itself. This is common in parent/child hierarchies (like categories) and is usually safe.`,
           severity: 'info',
           after: `-- Recommendation: Ensure the self-referencing column is NULLABLE\nALTER TABLE "${cycle[0]}" ALTER COLUMN "${getFkCol(cycle[0], cycle[0])}" DROP NOT NULL;`
         }
@@ -222,7 +241,7 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         const colA = getFkCol(cycle[0], cycle[1])
         return {
           title: `Direct Cycle: ${cycle[0]} ↔ ${cycle[1]}`,
-          message: `Mutual dependency detected between '${cycle[0]}' and '${cycle[1]}'. This creates a deadlock during initial record insertion.`,
+          message: `Mutual dependency detected between '${cycle[0]}' and '${cycle[1]}'. High Risk for Inserts: Initial data creation will deadlock unless triggers or deferred constraints are used.`,
           severity: 'error',
           after: `-- Solution 1: Use DEFERRABLE Constraints\nALTER TABLE "${cycle[0]}" \n  ADD CONSTRAINT "${cycle[0]}_${colA}_fkey" \n  FOREIGN KEY ("${colA}") REFERENCES "${cycle[1]}"("id")\n  DEFERRABLE INITIALLY DEFERRED;\n\n-- Solution 2: Make the column NULLABLE\nALTER TABLE "${cycle[0]}" ALTER COLUMN "${colA}" DROP NOT NULL;`
         }
@@ -231,16 +250,16 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       const firstCol = getFkCol(cycle[0], cycle[1])
       return {
         title: `Indirect Loop: ${cycle.join(' → ')}`,
-        message: `A complex multi-table circular dependency was detected. This complicates cascading deletes and data operations.`,
+        message: `A multi-table circular dependency was detected. High Risk for Cascading Deletes: Deleting records in any stage of this chain could cause system instability or unexpected data loss.`,
         severity: 'error',
         after: `-- Solution: Use DEFERRABLE constraints for the cycle entry point\nALTER TABLE "${cycle[0]}" \n  ADD CONSTRAINT "${cycle[0]}_${firstCol}_fkey" \n  FOREIGN KEY ("${firstCol}") REFERENCES "${cycle[1]}"("id")\n  DEFERRABLE INITIALLY DEFERRED;`
       }
     })
 
     // 4. Trigger Loops
-    results['trigger-loop'] = (schema.triggers || [])
+    results['trigger-loop'] = (schema!.triggers || [])
       .filter(trig => {
-        const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
+        const func = schema!.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
         if (!func) return false
         
         const body = func.body.toLowerCase()
@@ -261,18 +280,18 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       }))
 
     // 5. Indexes
-    results.indexes = (schema.indexes || []).map(idx => ({
+    results.indexes = (schema!.indexes || []).map(idx => ({
        title: `Index: ${idx.name}`,
        message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}' involving columns (${idx.columns.join(', ')})${idx.where ? ` WHERE ${idx.where}` : ''}.`,
        severity: 'info'
     }))
 
     // 6. Missing Index
-    schema.foreignKeys.forEach(fk => {
-      const table = schema.tables.find(t => t.name.toLowerCase() === fk.sourceTable.toLowerCase())
+    schema!.foreignKeys.forEach(fk => {
+      const table = schema!.tables.find(t => t.name.toLowerCase() === fk.sourceTable.toLowerCase())
       if (table?.columns.find(c => c.name.toLowerCase() === fk.sourceColumn.toLowerCase())?.isPrimaryKey) return
       
-      const hasIndex = (schema.indexes || []).some(idx => 
+      const hasIndex = (schema!.indexes || []).some(idx => 
         idx.tableName.toLowerCase() === fk.sourceTable.toLowerCase() && 
         idx.columns.some(col => col.toLowerCase() === fk.sourceColumn.toLowerCase())
       )

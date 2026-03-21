@@ -64,15 +64,18 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       }
       
       // Table-level CONSTRAINT ... FOREIGN KEY
-        const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+        const fkMatch = trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/i)
         // Try again with update/delete swapped
-        const fkMatchRev = fkMatch ? null : trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\s*\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+        const fkMatchRev = fkMatch ? null : trimmed.match(/FOREIGN\s+KEY\s*\(\s*["']?(\w+)["']?\)\s*REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/i)
         
         const fkMatchData = fkMatch || fkMatchRev
         if (fkMatchData) {
           const onDelete = fkMatch ? fkMatchData[5] : fkMatchData[6]
           const onUpdate = fkMatch ? fkMatchData[6] : fkMatchData[5]
           
+          const isDeferrable = !!(fkMatchData[7] && /DEFERRABLE/i.test(fkMatchData[7]) && !/NOT/i.test(fkMatchData[7]))
+          const initiallyDeferred = !!(fkMatchData[8] && /DEFERRED/i.test(fkMatchData[8]))
+
           foreignKeys.push({
             id: generateId('fk'),
             sourceTable: tableName,
@@ -81,6 +84,8 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
             targetColumn: fkMatchData[4],
             onDelete: onDelete?.toUpperCase(),
             onUpdate: onUpdate?.toUpperCase(),
+            isDeferrable,
+            initiallyDeferred,
           })
         }
       
@@ -128,19 +133,24 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
       }
       
       // Check for inline REFERENCES
-      const refMatch = restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
-      const refMatchRev = refMatch ? null : restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/i)
+      const refMatch = restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/i)
+      const refMatchRev = refMatch ? null : restOfLine.match(/REFERENCES\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?\s*\(\s*["']?(\w+)["']?\s*\)(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/i)
       
       const colRefMatch = refMatch || refMatchRev
       if (colRefMatch) {
         const onDelete = refMatch ? colRefMatch[4] : colRefMatch[5]
         const onUpdate = refMatch ? colRefMatch[5] : colRefMatch[4]
         
+        const isDeferrable = !!(colRefMatch[6] && /DEFERRABLE/i.test(colRefMatch[6]) && !/NOT/i.test(colRefMatch[6]))
+        const initiallyDeferred = !!(colRefMatch[7] && /DEFERRED/i.test(colRefMatch[7]))
+
         column.references = {
           table: colRefMatch[2],
           column: colRefMatch[3],
           onDelete: onDelete?.toUpperCase(),
           onUpdate: onUpdate?.toUpperCase(),
+          isDeferrable,
+          initiallyDeferred,
         }
         foreignKeys.push({
           id: generateId('fk'),
@@ -150,6 +160,8 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
           targetColumn: colRefMatch[3],
           onDelete: onDelete?.toUpperCase(),
           onUpdate: onUpdate?.toUpperCase(),
+          isDeferrable,
+          initiallyDeferred,
         })
       }
       
@@ -380,7 +392,7 @@ function parseDisabledTriggers(sql: string, triggers: ParsedTrigger[]) {
 // Parse ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY statements
 function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignKeys: ForeignKeyRelation[]) {
   // Match: ALTER TABLE [ONLY] [schema.]table ADD [CONSTRAINT name] FOREIGN KEY (col) REFERENCES [schema.]table(col) [ON ...]
-  const alterFkRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ADD\s+(?:CONSTRAINT\s+["']?[^"'\s]+["']?\s+)?FOREIGN\s+KEY\s*\(\s*["']?([^"'\s),]+)["']?\s*\)\s*REFERENCES\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(\s*["']?([^"'\s)]+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?/gi
+  const alterFkRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ADD\s+(?:CONSTRAINT\s+["']?[^"'\s]+["']?\s+)?FOREIGN\s+KEY\s*\(\s*["']?([^"'\s),]+)["']?\s*\)\s*REFERENCES\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(\s*["']?([^"'\s)]+)["']?\s*\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?/gi
   
   let alterFkMatch
   while ((alterFkMatch = alterFkRegex.exec(sql)) !== null) {
@@ -399,6 +411,9 @@ function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignK
             fk.targetColumn === targetColumn
     )
     
+    const isDeferrable = !!(alterFkMatch[9] && /DEFERRABLE/i.test(alterFkMatch[9]) && !/NOT/i.test(alterFkMatch[9]))
+    const initiallyDeferred = !!(alterFkMatch[10] && /DEFERRED/i.test(alterFkMatch[10]))
+
     if (!isDuplicate) {
       foreignKeys.push({
         id: generateId('fk'),
@@ -408,6 +423,8 @@ function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignK
         targetColumn,
         onDelete,
         onUpdate,
+        isDeferrable,
+        initiallyDeferred,
       })
     }
     
@@ -421,7 +438,30 @@ function parseAlterTableForeignKeys(sql: string, tables: ParsedTable[], foreignK
           column: targetColumn,
           onDelete,
           onUpdate,
+          isDeferrable,
+          initiallyDeferred,
         }
+      }
+    }
+  }
+}
+
+// Parse ALTER TABLE ... ALTER COLUMN ... SET/DROP NOT NULL
+function parseAlterTableNullability(sql: string, tables: ParsedTable[]) {
+  const nullRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s+ALTER\s+COLUMN\s+["']?([^"'\s]+)["']?\s+(SET|DROP)\s+NOT\s+NULL/gi
+  
+  let match
+  while ((match = nullRegex.exec(sql)) !== null) {
+    const tableSchema = match[1] || 'public'
+    const tableName = match[2]
+    const columnName = match[3]
+    const action = match[4].toUpperCase()
+    
+    const table = tables.find(t => t.name.toLowerCase() === tableName.toLowerCase())
+    if (table) {
+      const column = table.columns.find(c => c.name.toLowerCase() === columnName.toLowerCase())
+      if (column) {
+        column.isNotNull = action === 'SET'
       }
     }
   }
@@ -627,6 +667,9 @@ export function parseSQL(sql: string): ParsedSchema {
   
   // Parse ALTER TABLE ... ADD FOREIGN KEY (out-of-line FK definitions)
   parseAlterTableForeignKeys(cleanedSql, tables, foreignKeys)
+  
+  // Parse ALTER TABLE ... ALTER COLUMN ... SET/DROP NOT NULL
+  parseAlterTableNullability(cleanedSql, tables)
   
   // Parse RLS status
   parseRLSStatus(cleanedSql, tables)
