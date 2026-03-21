@@ -234,14 +234,21 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       .filter(trig => {
         const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
         if (!func) return false
+        
         const body = func.body.toLowerCase()
         const tName = trig.tableName.toLowerCase()
         const selfUpdatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
-        return selfUpdatePattern.test(body)
+        
+        const hasSelfUpdate = selfUpdatePattern.test(body)
+        const hasDepthGuard = body.includes('pg_trigger_depth()')
+        const hasWhenGuard = !!trig.whenClause
+        
+        // It's a risk only if it updates itself and lacks any safety guards
+        return hasSelfUpdate && !hasDepthGuard && !hasWhenGuard
       })
       .map(trig => ({
         title: `Infinite Loop Risk: ${trig.name}`,
-        message: `Direct self-recursion detected on table '${trig.tableName}'.`,
+        message: `This trigger on '${trig.tableName}' performs a mutation (INSERT/UPDATE/DELETE) on the same table without safety guards like 'WHEN' or 'pg_trigger_depth()'. This will likely cause infinite recursion.`,
         severity: 'error'
       }))
 

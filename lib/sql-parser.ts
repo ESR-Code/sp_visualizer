@@ -278,7 +278,7 @@ function parseFunctions(sql: string): ParsedFunction[] {
 function parseTriggers(sql: string): ParsedTrigger[] {
   const triggers: ParsedTrigger[] = []
   
-  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+["']?([^"'\s]+)["']?\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+([\s\S]+?)\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?[\s\S]*?EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)/gi
+  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+["']?([^"'\s]+)["']?\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+([\s\S]+?)\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?[\s\S]*?(?:WHEN\s*\(([\s\S]*?)\))?\s*EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)/gi
   
   let match
   while ((match = triggerRegex.exec(sql)) !== null) {
@@ -305,8 +305,9 @@ function parseTriggers(sql: string): ParsedTrigger[] {
     
     const tableSchema = match[4] || 'public'
     const tableName = match[5]
-    const funcSchema = match[6] || 'public'
-    const funcName = match[7]
+    const whenClause = match[6]?.trim()
+    const funcSchema = match[7] || 'public'
+    const funcName = match[8]
     
     triggers.push({
       id: generateId('trigger'),
@@ -318,6 +319,7 @@ function parseTriggers(sql: string): ParsedTrigger[] {
       functionName: funcName,
       functionSchema: funcSchema,
       updatedColumns: updatedColumns.length > 0 ? updatedColumns : undefined,
+      whenClause,
     })
   }
   
