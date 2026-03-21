@@ -105,6 +105,17 @@ export interface ParsedExtension {
   version?: string
 }
 
+export interface ParsedIndex {
+  id: string
+  name: string
+  tableName: string
+  tableSchema: string
+  isUnique: boolean
+  columns: string[]
+  method: string
+  where?: string
+}
+
 export interface ParsedSchema {
   tables: ParsedTable[]
   enums: ParsedEnum[]
@@ -116,6 +127,7 @@ export interface ParsedSchema {
   functionCalls: FunctionCall[]
   views: ParsedView[]
   extensions: ParsedExtension[]
+  indexes: ParsedIndex[]
 }
 
 // Node types for React Flow

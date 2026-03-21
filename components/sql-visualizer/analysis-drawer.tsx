@@ -259,8 +259,54 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       return results
     }
 
+    if (selectedAnalysis === 'trigger-loop') {
+      return (schema.triggers || [])
+        .filter(trig => {
+          const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
+          if (!func) return false
+          const body = func.body.toLowerCase()
+          const tName = trig.tableName.toLowerCase()
+          const selfUpdatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
+          return selfUpdatePattern.test(body)
+        })
+        .map(trig => ({
+          title: `Infinite Loop Risk: ${trig.name}`,
+          message: `This trigger on '${trig.tableName}' calls a function that directly updates the same table. Without proper guards (like 'IF pg_trigger_depth() = 0'), this will cause an infinite recursive loop.`,
+          severity: 'error'
+        }))
+    }
+
     if (selectedAnalysis === 'indexes') {
-       return []
+       return (schema.indexes || []).map(idx => ({
+         title: `Index: ${idx.name}`,
+         message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}' using columns (${idx.columns.join(', ')})${idx.where ? ` WHERE ${idx.where}` : ''}.`,
+         severity: 'info'
+       }))
+    }
+
+    if (selectedAnalysis === 'missing-index') {
+      const results: AnalysisResult[] = []
+      schema.foreignKeys.forEach(fk => {
+        const table = schema.tables.find(t => t.name === fk.sourceTable)
+        const col = table?.columns.find(c => c.name === fk.sourceColumn)
+        if (col?.isPrimaryKey) return
+        
+        const hasIndex = (schema.indexes || []).some(idx => 
+          idx.tableName === fk.sourceTable && 
+          idx.columns[0] === fk.sourceColumn &&
+          idx.method === 'btree'
+        )
+        
+        if (!hasIndex) {
+          results.push({
+            title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
+            message: `The foreign key column '${fk.sourceColumn}' is missing a B-Tree index. Foreign keys should be indexed to ensure fast joins and efficient cascading deletions.`,
+            severity: 'warning',
+            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+          })
+        }
+      })
+      return results
     }
     
     return []

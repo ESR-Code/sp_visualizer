@@ -11,6 +11,7 @@ import {
   Column,
   ParsedView,
   ParsedExtension,
+  ParsedIndex,
 } from './sql-types'
 
 // Generate unique IDs
@@ -564,6 +565,43 @@ function parseRLSStatus(sql: string, tables: ParsedTable[]) {
   }
 }
 
+// Parse CREATE INDEX statements
+function parseIndexes(sql: string): ParsedIndex[] {
+  const indexes: ParsedIndex[] = []
+  
+  // CREATE [UNIQUE] INDEX [IF NOT EXISTS] name ON [schema.]table [USING method] (column, ...) [WHERE ...]
+  const indexRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?(?:\s+USING\s+(\w+))?\s*\(([\s\S]*?)\)(?:\s+WHERE\s*\(([\s\S]*?)\))?/gi
+  
+  let match
+  while ((match = indexRegex.exec(sql)) !== null) {
+    const isUnique = !!match[1]
+    const indexName = match[2]
+    const tableSchema = match[3] || 'public'
+    const tableName = match[4]
+    const method = match[5] || 'btree'
+    const columnsStr = match[6]
+    const whereExpr = match[7]?.trim()
+    
+    const columns = columnsStr.split(',').map(c => {
+      const parts = c.trim().split(/\s+/)
+      return parts[0].replace(/["']/g, '')
+    })
+    
+    indexes.push({
+      id: generateId('idx'),
+      name: indexName,
+      tableName,
+      tableSchema,
+      isUnique,
+      columns,
+      method: method.toLowerCase(),
+      where: whereExpr,
+    })
+  }
+  
+  return indexes
+}
+
 // Main parser function
 export function parseSQL(sql: string): ParsedSchema {
   resetIdCounter()
@@ -580,6 +618,7 @@ export function parseSQL(sql: string): ParsedSchema {
   const policies = parsePolicies(cleanedSql)
   const views = parseViews(cleanedSql)
   const extensions = parseExtensions(cleanedSql)
+  const indexes = parseIndexes(cleanedSql)
   
   // Mark disabled triggers
   parseDisabledTriggers(cleanedSql, triggers)
@@ -604,6 +643,7 @@ export function parseSQL(sql: string): ParsedSchema {
     functionCalls,
     views,
     extensions,
+    indexes,
   }
 }
 
