@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Sheet,
   SheetContent,
@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ShieldAlert, Zap, RefreshCw, Search, AlertCircle, CheckCircle2, Info, RotateCcw, Activity, Layers, Copy, ClipboardCheck } from 'lucide-react'
+import { ShieldAlert, Zap, RefreshCw, Search, AlertCircle, CheckCircle2, Info, RotateCcw, Activity, Layers, Copy, ClipboardCheck, Filter } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -74,8 +74,11 @@ const ANALYSIS_TYPES = [
 ]
 interface AnalysisResult {
   title: string
+  tableName?: string
+  columnName?: string
   message: string
   severity: 'info' | 'warning' | 'error' | 'success'
+  category?: string
   before?: string
   after?: string
 }
@@ -304,17 +307,23 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       if (!idxAtPrefix) {
         if (hasIndexSomewhere) {
           results['missing-index'].push({
-            title: `Suboptimal Index: ${fk.sourceTable}.${fk.sourceColumn}`,
-            message: `[Composite Prefixing] The column is part of a composite index but is not the leading column. Foreign keys are most effective when they are the index prefix.`,
+            title: `Suboptimal Index`,
+            tableName: fk.sourceTable,
+            columnName: fk.sourceColumn,
+            message: `The column is part of a composite index but is not the leading column. Foreign keys are most effective when they are the index prefix.`,
+            category: 'Composite Prefixing',
             severity: 'warning',
-            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+            after: `CREATE INDEX "idx_${fk.sourceTable}_${fk.sourceColumn}" ON "${table?.schema || 'public'}"."${fk.sourceTable}" USING "btree" ("${fk.sourceColumn}");`
           })
         } else {
           results['missing-index'].push({
-            title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
-            message: `[Unindexed FK] This foreign key lacks a B-Tree index, which is essential for fast joins and efficient cascading deletes.`,
+            title: `Missing Index`,
+            tableName: fk.sourceTable,
+            columnName: fk.sourceColumn,
+            message: `This foreign key lacks a B-Tree index, which is essential for fast joins and efficient cascading deletes.`,
+            category: 'Unindexed FK',
             severity: 'error',
-            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+            after: `CREATE INDEX "idx_${fk.sourceTable}_${fk.sourceColumn}" ON "${table?.schema || 'public'}"."${fk.sourceTable}" USING "btree" ("${fk.sourceColumn}");`
           })
         }
       }
@@ -331,10 +340,13 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         const hasIdx = indexes.some(idx => idx.columns.includes(softDeleteCol.name) || (idx.where && idx.where.toLowerCase().includes(softDeleteCol.name.toLowerCase())))
         if (!hasIdx) {
           results['missing-index'].push({
-            title: `Soft Delete: ${table.name}`,
-            message: `[Partial Indexing] Detected soft-delete column '${softDeleteCol.name}'. A partial index (WHERE ${softDeleteCol.name} IS NULL) is recommended for better performance.`,
+            title: `Soft Delete Opportunity`,
+            tableName: table.name,
+            columnName: softDeleteCol.name,
+            message: `Detected soft-delete column '${softDeleteCol.name}'. A partial index (WHERE ${softDeleteCol.name} IS NULL) is recommended for better performance.`,
+            category: 'Partial Indexing',
             severity: 'info',
-            after: `CREATE INDEX ON "${table.name}" (created_at) WHERE ${softDeleteCol.name} IS NULL;`
+            after: `CREATE INDEX "idx_${table.name}_sd" ON "${table.schema}"."${table.name}" USING "btree" ("created_at") WHERE "${softDeleteCol.name}" IS NULL;`
           })
         }
       }
@@ -345,10 +357,13 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         const hasGin = indexes.some(idx => idx.method === 'gin' && idx.columns.includes(jsonbCol.name))
         if (!hasGin) {
           results['missing-index'].push({
-            title: `JSONB Search: ${table.name}.${jsonbCol.name}`,
-            message: `[Missing GIN] JSONB columns should have a GIN index to enable efficient internal data searching.`,
+            title: `JSONB Search Optimization`,
+            tableName: table.name,
+            columnName: jsonbCol.name,
+            message: `JSONB columns should have a GIN index to enable efficient internal data searching.`,
+            category: 'Search Optimization',
             severity: 'info',
-            after: `CREATE INDEX ON "${table.name}" USING gin ("${jsonbCol.name}");`
+            after: `CREATE INDEX "idx_${table.name}_${jsonbCol.name}_gin" ON "${table.schema}"."${table.name}" USING "gin" ("${jsonbCol.name}");`
           })
         }
       }
@@ -358,10 +373,13 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
       highCardCols.forEach(col => {
          if (!indexes.some(idx => idx.columns.includes(col.name))) {
            results['missing-index'].push({
-              title: `Critical Filter: ${table.name}.${col.name}`,
-              message: `[High Cardinality] Columns like '${col.name}' are likely high-filter candidates and should be indexed.`,
+              title: `Critical Filter Detection`,
+              tableName: table.name,
+              columnName: col.name,
+              message: `Columns like '${col.name}' are likely high-filter candidates and should be indexed.`,
+              category: 'High Cardinality',
               severity: 'warning',
-              after: `CREATE UNIQUE INDEX ON "${table.name}" ("${col.name}");`
+              after: `CREATE UNIQUE INDEX "idx_${table.name}_${col.name}_unique" ON "${table.schema}"."${table.name}" USING "btree" ("${col.name}");`
            })
          }
       })
@@ -373,10 +391,13 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         const hasIdx = indexes.some(idx => idx.columns.includes(typeCol.name) && idx.columns.includes(idCol.name))
         if (!hasIdx) {
           results['missing-index'].push({
-            title: `Polymorphic Relationship: ${table.name}`,
-            message: `[Polymorphic Type] Found type/id pair. A composite index on (${typeCol.name}, ${idCol.name}) is recommended for polymorphic queries.`,
+            title: `Polymorphic Relationship Detected`,
+            tableName: table.name,
+            columnName: `${typeCol.name}, ${idCol.name}`,
+            message: `Found type/id pair. A composite index on (${typeCol.name}, ${idCol.name}) is recommended for polymorphic queries.`,
+            category: 'Polymorphic Type',
             severity: 'info',
-            after: `CREATE INDEX ON "${table.name}" ("${typeCol.name}", "${idCol.name}");`
+            after: `CREATE INDEX "idx_${table.name}_polymorphic" ON "${table.schema}"."${table.name}" USING "btree" ("${typeCol.name}", "${idCol.name}");`
           })
         }
       }
@@ -385,7 +406,19 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
     return results
   }, [schema])
 
+  const [filterCategory, setFilterCategory] = useState<string | null>(null)
+  
   const results = allAnalysisResults[selectedAnalysis] || []
+  
+  // Available categories for the current analysis (for filtering)
+  const availableCategories = useMemo(() => 
+    Array.from(new Set(results.map(r => r.category).filter(Boolean))) as string[]
+  , [results])
+  
+  // Filtered results for display
+  const displayResults = useMemo(() => 
+    filterCategory ? results.filter(r => r.category === filterCategory) : results
+  , [results, filterCategory])
 
   const healthValue = useMemo(() => {
     if (!schema) return 100
@@ -401,6 +434,11 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
     
     return Math.max(0, score)
   }, [schema, allAnalysisResults])
+
+  // Reset filter when analysis type changes
+  useEffect(() => {
+    setFilterCategory(null)
+  }, [selectedAnalysis])
 
   const healthStatus = useMemo(() => {
     if (healthValue === 100) return { label: 'Perfect', color: 'bg-emerald-500', text: 'text-emerald-400', icon: CheckCircle2 }
@@ -476,14 +514,37 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
           </div>
 
           <div className="flex-1 overflow-hidden px-6 pt-4">
-            <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-zinc-500">
-              Analysis Results {results.length > 0 && `(${results.length})`}
-            </h3>
+            <div className="mb-4 flex items-center justify-between min-h-[32px]">
+               <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                 Analysis Results {results.length > 0 && `(${results.length})`}
+               </h3>
+               
+               {selectedAnalysis === 'missing-index' && availableCategories.length > 0 && (
+                 <div className="flex items-center gap-2">
+                    <Filter className="h-3 w-3 text-zinc-600" />
+                    <Select value={filterCategory || "All"} onValueChange={(val) => setFilterCategory(val === "All" ? null : val)}>
+                      <SelectTrigger className="h-7 w-[180px] border-zinc-800 bg-zinc-900/50 text-[10px] font-bold uppercase text-zinc-400 hover:text-zinc-200 transition-colors focus:ring-0">
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-200">
+                        <SelectItem value="All" className="text-[10px] font-bold uppercase focus:bg-zinc-900 focus:text-white">
+                           All Categories ({results.length})
+                        </SelectItem>
+                        {availableCategories.map(cat => (
+                          <SelectItem key={cat} value={cat} className="text-[10px] font-bold uppercase focus:bg-zinc-900 focus:text-white">
+                            {cat} ({results.filter(r => r.category === cat).length})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                 </div>
+               )}
+            </div>
             
-            <ScrollArea className="h-[calc(100vh-440px)] w-full">
+            <ScrollArea className="h-[calc(100vh-450px)] w-full">
               <div className="space-y-6 pb-20">
-                {results.length > 0 ? (
-                  results.map((res, i) => (
+                {displayResults.length > 0 ? (
+                  displayResults.map((res, i) => (
                     <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 hover:bg-zinc-900/60 transition-colors w-full overflow-hidden">
                       <div className="flex items-start gap-4">
                         {res.severity === 'error' ? (
@@ -496,10 +557,35 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
                           <CheckCircle2 className="mt-1 h-4 w-4 text-emerald-500 shrink-0" />
                         )}
                         <div className="flex-1 min-w-0 pr-1">
-                          <div className="text-sm font-medium text-zinc-200 break-words">
-                            {`${i + 1}. `}{res.title}
+                          <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                             <div className="text-sm font-semibold text-zinc-100">
+                                {`${i + 1}. `}{res.title}
+                             </div>
+                             {res.tableName && (
+                               <div className="flex items-center text-[11px] font-mono">
+                                 <span className="bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{res.tableName}</span>
+                                 <span className="mx-1.5 text-zinc-600">→</span>
+                                 <span className="text-zinc-300">{res.columnName}</span>
+                               </div>
+                             )}
                           </div>
-                          <p className="mt-1 text-xs text-zinc-500 leading-relaxed font-normal break-words">{res.message}</p>
+                          
+                          {res.category && (
+                            <div className="mb-3">
+                               <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                                 res.category === 'Unindexed FK' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                 res.category === 'Composite Prefixing' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                 res.category === 'Partial Indexing' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                 res.category === 'Polymorphic Type' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                                 res.category === 'High Cardinality' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                               }`}>
+                                 {res.category}
+                               </span>
+                            </div>
+                          )}
+                          
+                          <p className="text-xs text-zinc-400 leading-relaxed font-normal break-words">{res.message}</p>
                           
                           {res.before && (
                              <div className="mt-5 space-y-3">
