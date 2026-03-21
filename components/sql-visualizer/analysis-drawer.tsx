@@ -385,11 +385,11 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
               Analysis Results {results.length > 0 && `(${results.length})`}
             </h3>
             
-            <ScrollArea className="h-[calc(100vh-440px)]">
-              <div className="space-y-6 pr-6 pb-20">
+            <ScrollArea className="h-[calc(100vh-440px)] w-full">
+              <div className="space-y-6 pb-20">
                 {results.length > 0 ? (
                   results.map((res, i) => (
-                    <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 hover:bg-zinc-900/60 transition-colors">
+                    <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 hover:bg-zinc-900/60 transition-colors w-full overflow-hidden">
                       <div className="flex items-start gap-4">
                         {res.severity === 'error' ? (
                           <ShieldAlert className="mt-1 h-4 w-4 text-red-500 shrink-0" />
@@ -400,18 +400,18 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
                         ) : (
                           <CheckCircle2 className="mt-1 h-4 w-4 text-emerald-500 shrink-0" />
                         )}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-zinc-200">
+                        <div className="flex-1 min-w-0 pr-1">
+                          <div className="text-sm font-medium text-zinc-200 break-words">
                             {`${i + 1}. `}{res.title}
                           </div>
-                          <p className="mt-1 text-xs text-zinc-500 leading-relaxed font-normal">{res.message}</p>
+                          <p className="mt-1 text-xs text-zinc-500 leading-relaxed font-normal break-words">{res.message}</p>
                           
                           {res.before && (
                              <div className="mt-5 space-y-3">
                                <div className="flex items-center justify-between gap-4">
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/80">Current Statement</span>
                                </div>
-                               <div className="rounded-lg border border-red-900/30 bg-red-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-300">
+                               <div className="rounded-lg border border-red-900/30 bg-red-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-300 custom-scrollbar">
                                  {highlightSQL(res.before)}
                                </div>
                              </div>
@@ -425,7 +425,7 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
                                     <CopyButton text={res.after} />
                                   </div>
                                </div>
-                               <div className="rounded-lg border border-emerald-900/30 bg-emerald-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-100">
+                               <div className="rounded-lg border border-emerald-900/30 bg-emerald-900/10 p-4 font-mono text-[11px] leading-relaxed overflow-x-auto text-zinc-100 custom-scrollbar">
                                  {highlightSQL(res.after)}
                                </div>
                              </div>
