@@ -165,6 +165,100 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         }))
     }
 
+    if (selectedAnalysis === 'circular') {
+      const results: AnalysisResult[] = []
+      
+      // 1. Foreign Key Cycles (ON DELETE CASCADE)
+      const cascadeGraph: Record<string, string[]> = {}
+      schema.foreignKeys.forEach(fk => {
+        if (fk.onDelete === 'CASCADE') {
+          if (!cascadeGraph[fk.sourceTable]) cascadeGraph[fk.sourceTable] = []
+          cascadeGraph[fk.sourceTable].push(fk.targetTable)
+        }
+      })
+      
+      const findFkCycle = (node: string, visited: Set<string>, path: string[]): string[] | null => {
+        const index = path.indexOf(node)
+        if (index !== -1) return [...path.slice(index), node]
+        if (visited.has(node)) return null
+        
+        visited.add(node)
+        const neighbors = cascadeGraph[node] || []
+        for (const neighbor of neighbors) {
+          const cycle = findFkCycle(neighbor, visited, [...path, node])
+          if (cycle) return cycle
+        }
+        return null
+      }
+      
+      const checkedTables = new Set<string>()
+      schema.tables.forEach(t => {
+        const cycle = findFkCycle(t.name, checkedTables, [])
+        if (cycle) {
+          results.push({
+            title: `Cascade Loop: ${cycle.join(' → ')}`,
+            message: `A circular 'ON DELETE CASCADE' path was detected. Deleting a row in any of these tables will trigger a recursive chain of deletions that Postgres may block or handle unpredictably.`,
+            severity: 'error'
+          })
+          cycle.forEach(n => checkedTables.add(n))
+        }
+      })
+      
+      // 2. Trigger Circular Dependencies
+      const triggerGraph: Record<string, { table: string, function: string }[]> = {}
+      schema.triggers.forEach(trig => {
+        const func = schema.functions.find(f => 
+          f.name.toLowerCase() === trig.functionName.toLowerCase() && 
+          f.schema.toLowerCase() === trig.functionSchema.toLowerCase()
+        )
+        if (func) {
+          const body = func.body.toLowerCase()
+          schema.tables.forEach(targetTable => {
+             const tName = targetTable.name.toLowerCase()
+             const updatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
+             if (updatePattern.test(body)) {
+                if (!triggerGraph[trig.tableName]) triggerGraph[trig.tableName] = []
+                triggerGraph[trig.tableName].push({ table: targetTable.name, function: trig.functionName })
+             }
+          })
+        }
+      })
+      
+      const findTriggerCycle = (node: string, visited: Set<string>, path: { table: string, function: string }[]): { table: string, function: string }[] | null => {
+        const index = path.findIndex(p => p.table === node)
+        if (index !== -1) return [...path.slice(index), { table: node, function: '' }]
+        if (visited.has(node)) return null
+        
+        visited.add(node)
+        const neighbors = triggerGraph[node] || []
+        for (const neighbor of neighbors) {
+          const cycle = findTriggerCycle(neighbor.table, visited, [...path, { table: node, function: neighbor.function }])
+          if (cycle) return cycle
+        }
+        return null
+      }
+      
+      const checkedTriggerTables = new Set<string>()
+      schema.tables.forEach(t => {
+        const cycle = findTriggerCycle(t.name, checkedTriggerTables, [])
+        if (cycle) {
+          const pathDisplay = cycle.map((c, idx) => {
+            if (idx === cycle.length - 1) return c.table
+            return `${c.table} updates ${cycle[idx+1].table}`
+          }).join(' → ')
+
+          results.push({
+            title: `Circular Trigger: ${t.name}`,
+            message: pathDisplay,
+            severity: 'error'
+          })
+          cycle.forEach(c => checkedTriggerTables.add(c.table))
+        }
+      })
+      
+      return results
+    }
+
     if (selectedAnalysis === 'indexes') {
        return []
     }
