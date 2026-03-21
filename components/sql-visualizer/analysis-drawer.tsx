@@ -106,211 +106,197 @@ const CopyButton = ({ text }: { text: string }) => {
 export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps) {
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>(ANALYSIS_TYPES[0].id)
 
-  const healthValue: number = 82 // Static for now
+  const allAnalysisResults = useMemo(() => {
+    if (!schema) return {} as Record<string, AnalysisResult[]>
+    
+    const results: Record<string, AnalysisResult[]> = {
+      rls: [],
+      performance: [],
+      circular: [],
+      'trigger-loop': [],
+      indexes: [],
+      'missing-index': []
+    }
+
+    // 1. RLS Check
+    const tablesWithPolicies = new Set(schema.policies.map(p => p.tableName))
+    results.rls = schema.tables
+      .filter(t => tablesWithPolicies.has(t.name) && !t.rlsEnabled)
+      .map(t => ({
+        title: `Security Alert: ${t.name}`,
+        message: `This table has policies defined but Row Level Security is not enabled. Data remains publicly accessible until RLS is activated.`,
+        severity: 'error',
+        after: `ALTER TABLE "${t.name}" ENABLE ROW LEVEL SECURITY;`
+      }))
+
+    // 2. Performance
+    const wrapUid = (expr: string) => expr.replace(/(?<!\(\s*select\s+)auth\.uid\(\)/gi, '(select auth.uid())');
+    const hasRawUid = (expr: string) => /(?<!\(\s*select\s+)auth\.uid\(\)/i.test(expr);
+    results.performance = schema.policies
+      .filter(p => {
+        const exprs = [p.usingExpression, p.withCheckExpression].filter(Boolean) as string[]
+        return exprs.some(hasRawUid)
+      })
+      .map(p => {
+        const roleStr = p.roles.length > 0 ? `TO ${p.roles.join(', ')}` : ''
+        const asType = p.permissive ? '' : 'AS RESTRICTIVE '
+        const beforeParts = []
+        if (p.usingExpression) beforeParts.push(`  USING (${p.usingExpression})`)
+        if (p.withCheckExpression) beforeParts.push(`  WITH CHECK (${p.withCheckExpression})`)
+        const afterParts = []
+        if (p.usingExpression) afterParts.push(`  USING (${wrapUid(p.usingExpression)})`)
+        if (p.withCheckExpression) afterParts.push(`  WITH CHECK (${wrapUid(p.withCheckExpression)})`)
+
+        return {
+          title: `Policy: ${p.name}`,
+          message: `Wrapping auth.uid() in a subquery allows Postgres to cache the ID, preventing it from being re-executed for every row.`,
+          severity: 'warning',
+          before: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${beforeParts.join('\n')};`,
+          after: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${afterParts.join('\n')};`
+        }
+      })
+
+    // 3. Circular
+    const cascadeGraph: Record<string, string[]> = {}
+    schema.foreignKeys.forEach(fk => {
+      if (fk.onDelete === 'CASCADE') {
+        if (!cascadeGraph[fk.sourceTable]) cascadeGraph[fk.sourceTable] = []
+        cascadeGraph[fk.sourceTable].push(fk.targetTable)
+      }
+    })
+    const findFkCycle = (node: string, visited: Set<string>, path: string[]): string[] | null => {
+      const index = path.indexOf(node)
+      if (index !== -1) return [...path.slice(index), node]
+      if (visited.has(node)) return null
+      visited.add(node)
+      const neighbors = cascadeGraph[node] || []
+      for (const neighbor of neighbors) {
+        const cycle = findFkCycle(neighbor, visited, [...path, node])
+        if (cycle) return cycle
+      }
+      return null
+    }
+    const checkedTables = new Set<string>()
+    schema.tables.forEach(t => {
+      const cycle = findFkCycle(t.name, checkedTables, [])
+      if (cycle) {
+        results.circular.push({
+          title: `Cascade Loop: ${cycle.join(' → ')}`,
+          message: `A circular 'ON DELETE CASCADE' path detected. This can lead to unpredictable recursive deletions.`,
+          severity: 'error'
+        })
+        cycle.forEach(n => checkedTables.add(n))
+      }
+    })
+
+    const triggerGraph: Record<string, { table: string, function: string }[]> = {}
+    schema.triggers.forEach(trig => {
+      const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
+      if (func) {
+        const body = func.body.toLowerCase()
+        schema.tables.forEach(targetTable => {
+           const tName = targetTable.name.toLowerCase()
+           const updatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
+           if (updatePattern.test(body)) {
+              if (!triggerGraph[trig.tableName]) triggerGraph[trig.tableName] = []
+              triggerGraph[trig.tableName].push({ table: targetTable.name, function: trig.functionName })
+           }
+        })
+      }
+    })
+    const findTriggerCycle = (node: string, visited: Set<string>, path: { table: string, function: string }[]): { table: string, function: string }[] | null => {
+      const index = path.findIndex(p => p.table === node)
+      if (index !== -1) return [...path.slice(index), { table: node, function: '' }]
+      if (visited.has(node)) return null
+      visited.add(node)
+      const neighbors = triggerGraph[node] || []
+      for (const neighbor of neighbors) {
+        const cycle = findTriggerCycle(neighbor.table, visited, [...path, { table: node, function: neighbor.function }])
+        if (cycle) return cycle
+      }
+      return null
+    }
+    const checkedTriggerTables = new Set<string>()
+    schema.tables.forEach(t => {
+      const cycle = findTriggerCycle(t.name, checkedTriggerTables, [])
+      if (cycle) {
+        results.circular.push({
+          title: `Circular Trigger: ${t.name}`,
+          message: cycle.map((c, idx) => idx === cycle.length -1 ? c.table : `${c.table} → ${cycle[idx+1].table}`).join(' '),
+          severity: 'error'
+        })
+        cycle.forEach(c => checkedTriggerTables.add(c.table))
+      }
+    })
+
+    // 4. Trigger Loops
+    results['trigger-loop'] = (schema.triggers || [])
+      .filter(trig => {
+        const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
+        if (!func) return false
+        const body = func.body.toLowerCase()
+        const tName = trig.tableName.toLowerCase()
+        const selfUpdatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
+        return selfUpdatePattern.test(body)
+      })
+      .map(trig => ({
+        title: `Infinite Loop Risk: ${trig.name}`,
+        message: `Direct self-recursion detected on table '${trig.tableName}'.`,
+        severity: 'error'
+      }))
+
+    // 5. Indexes
+    results.indexes = (schema.indexes || []).map(idx => ({
+       title: `Index: ${idx.name}`,
+       message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}'.`,
+       severity: 'info'
+    }))
+
+    // 6. Missing Index
+    schema.foreignKeys.forEach(fk => {
+      const table = schema.tables.find(t => t.name === fk.sourceTable)
+      if (table?.columns.find(c => c.name === fk.sourceColumn)?.isPrimaryKey) return
+      const hasIndex = (schema.indexes || []).some(idx => idx.tableName === fk.sourceTable && idx.columns[0] === fk.sourceColumn)
+      if (!hasIndex) {
+        results['missing-index'].push({
+          title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
+          message: `Foreign key column is missing an index.`,
+          severity: 'warning',
+          after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
+        })
+      }
+    })
+
+    return results
+  }, [schema])
+
+  const results = allAnalysisResults[selectedAnalysis] || []
+
+  const healthValue = useMemo(() => {
+    if (!schema) return 100
+    let score = 100
+    const r = allAnalysisResults
+    
+    // Weighted Penalties
+    if (r.rls?.length) score -= Math.min(40, r.rls.length * 20)
+    if (r['trigger-loop']?.length) score -= Math.min(40, r['trigger-loop'].length * 25)
+    if (r.circular?.length) score -= Math.min(30, r.circular.length * 15)
+    if (r.performance?.length) score -= Math.min(15, r.performance.length * 5)
+    if (r['missing-index']?.length) score -= Math.min(15, r['missing-index'].length * 3)
+    
+    return Math.max(0, score)
+  }, [schema, allAnalysisResults])
 
   const healthStatus = useMemo(() => {
     if (healthValue === 100) return { label: 'Perfect', color: 'bg-emerald-500', text: 'text-emerald-400', icon: CheckCircle2 }
     if (healthValue >= 80) return { label: 'Excellent', color: 'bg-blue-500', text: 'text-blue-400', icon: CheckCircle2 }
     if (healthValue >= 50) return { label: 'Average', color: 'bg-amber-500', text: 'text-amber-400', icon: AlertCircle }
-    return { label: 'Danger', color: 'bg-red-500', text: 'text-red-400', icon: ShieldAlert }
+    return { label: 'At Risk', color: 'bg-red-500', text: 'text-red-400', icon: ShieldAlert }
   }, [healthValue])
 
   const currentAnalysis = useMemo(() => 
     ANALYSIS_TYPES.find(t => t.id === selectedAnalysis) || ANALYSIS_TYPES[0]
   , [selectedAnalysis])
-
-  const results = useMemo<AnalysisResult[]>(() => {
-    if (!schema) return []
-    
-    if (selectedAnalysis === 'performance') {
-      const wrapUid = (expr: string) => expr.replace(/(?<!\(\s*select\s+)auth\.uid\(\)/gi, '(select auth.uid())');
-      const hasRawUid = (expr: string) => /(?<!\(\s*select\s+)auth\.uid\(\)/i.test(expr);
-
-      return schema.policies
-        .filter(p => {
-          const exprs = [p.usingExpression, p.withCheckExpression].filter(Boolean) as string[]
-          return exprs.some(hasRawUid)
-        })
-        .map(p => {
-          const roleStr = p.roles.length > 0 ? `TO ${p.roles.join(', ')}` : ''
-          const asType = p.permissive ? '' : 'AS RESTRICTIVE '
-          
-          const beforeParts = []
-          if (p.usingExpression) beforeParts.push(`  USING (${p.usingExpression})`)
-          if (p.withCheckExpression) beforeParts.push(`  WITH CHECK (${p.withCheckExpression})`)
-          
-          const afterParts = []
-          if (p.usingExpression) afterParts.push(`  USING (${wrapUid(p.usingExpression)})`)
-          if (p.withCheckExpression) afterParts.push(`  WITH CHECK (${wrapUid(p.withCheckExpression)})`)
-
-          return {
-            title: `Policy: ${p.name}`,
-            message: `Wrapping auth.uid() in a subquery allows Postgres to cache the ID, preventing it from being re-executed for every row.`,
-            severity: 'warning',
-            before: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${beforeParts.join('\n')};`,
-            after: `CREATE POLICY "${p.name}" ON "${p.tableName}"\n${asType}FOR ${p.operation} ${roleStr}\n${afterParts.join('\n')};`
-          }
-        })
-    }
-
-    if (selectedAnalysis === 'rls') {
-      const tablesWithPolicies = new Set(schema.policies.map(p => p.tableName))
-      return schema.tables
-        .filter(t => tablesWithPolicies.has(t.name) && !t.rlsEnabled)
-        .map(t => ({
-          title: `Security Alert: ${t.name}`,
-          message: `This table has policies defined but Row Level Security is not enabled. Data remains publicly accessible until RLS is activated.`,
-          severity: 'error',
-          after: `ALTER TABLE "${t.name}" ENABLE ROW LEVEL SECURITY;`
-        }))
-    }
-
-    if (selectedAnalysis === 'circular') {
-      const results: AnalysisResult[] = []
-      
-      // 1. Foreign Key Cycles (ON DELETE CASCADE)
-      const cascadeGraph: Record<string, string[]> = {}
-      schema.foreignKeys.forEach(fk => {
-        if (fk.onDelete === 'CASCADE') {
-          if (!cascadeGraph[fk.sourceTable]) cascadeGraph[fk.sourceTable] = []
-          cascadeGraph[fk.sourceTable].push(fk.targetTable)
-        }
-      })
-      
-      const findFkCycle = (node: string, visited: Set<string>, path: string[]): string[] | null => {
-        const index = path.indexOf(node)
-        if (index !== -1) return [...path.slice(index), node]
-        if (visited.has(node)) return null
-        
-        visited.add(node)
-        const neighbors = cascadeGraph[node] || []
-        for (const neighbor of neighbors) {
-          const cycle = findFkCycle(neighbor, visited, [...path, node])
-          if (cycle) return cycle
-        }
-        return null
-      }
-      
-      const checkedTables = new Set<string>()
-      schema.tables.forEach(t => {
-        const cycle = findFkCycle(t.name, checkedTables, [])
-        if (cycle) {
-          results.push({
-            title: `Cascade Loop: ${cycle.join(' → ')}`,
-            message: `A circular 'ON DELETE CASCADE' path was detected. Deleting a row in any of these tables will trigger a recursive chain of deletions that Postgres may block or handle unpredictably.`,
-            severity: 'error'
-          })
-          cycle.forEach(n => checkedTables.add(n))
-        }
-      })
-      
-      // 2. Trigger Circular Dependencies
-      const triggerGraph: Record<string, { table: string, function: string }[]> = {}
-      schema.triggers.forEach(trig => {
-        const func = schema.functions.find(f => 
-          f.name.toLowerCase() === trig.functionName.toLowerCase() && 
-          f.schema.toLowerCase() === trig.functionSchema.toLowerCase()
-        )
-        if (func) {
-          const body = func.body.toLowerCase()
-          schema.tables.forEach(targetTable => {
-             const tName = targetTable.name.toLowerCase()
-             const updatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
-             if (updatePattern.test(body)) {
-                if (!triggerGraph[trig.tableName]) triggerGraph[trig.tableName] = []
-                triggerGraph[trig.tableName].push({ table: targetTable.name, function: trig.functionName })
-             }
-          })
-        }
-      })
-      
-      const findTriggerCycle = (node: string, visited: Set<string>, path: { table: string, function: string }[]): { table: string, function: string }[] | null => {
-        const index = path.findIndex(p => p.table === node)
-        if (index !== -1) return [...path.slice(index), { table: node, function: '' }]
-        if (visited.has(node)) return null
-        
-        visited.add(node)
-        const neighbors = triggerGraph[node] || []
-        for (const neighbor of neighbors) {
-          const cycle = findTriggerCycle(neighbor.table, visited, [...path, { table: node, function: neighbor.function }])
-          if (cycle) return cycle
-        }
-        return null
-      }
-      
-      const checkedTriggerTables = new Set<string>()
-      schema.tables.forEach(t => {
-        const cycle = findTriggerCycle(t.name, checkedTriggerTables, [])
-        if (cycle) {
-          const pathDisplay = cycle.map((c, idx) => {
-            if (idx === cycle.length - 1) return c.table
-            return `${c.table} updates ${cycle[idx+1].table}`
-          }).join(' → ')
-
-          results.push({
-            title: `Circular Trigger: ${t.name}`,
-            message: pathDisplay,
-            severity: 'error'
-          })
-          cycle.forEach(c => checkedTriggerTables.add(c.table))
-        }
-      })
-      
-      return results
-    }
-
-    if (selectedAnalysis === 'trigger-loop') {
-      return (schema.triggers || [])
-        .filter(trig => {
-          const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
-          if (!func) return false
-          const body = func.body.toLowerCase()
-          const tName = trig.tableName.toLowerCase()
-          const selfUpdatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
-          return selfUpdatePattern.test(body)
-        })
-        .map(trig => ({
-          title: `Infinite Loop Risk: ${trig.name}`,
-          message: `This trigger on '${trig.tableName}' calls a function that directly updates the same table. Without proper guards (like 'IF pg_trigger_depth() = 0'), this will cause an infinite recursive loop.`,
-          severity: 'error'
-        }))
-    }
-
-    if (selectedAnalysis === 'indexes') {
-       return (schema.indexes || []).map(idx => ({
-         title: `Index: ${idx.name}`,
-         message: `${idx.isUnique ? 'Unique ' : ''}${idx.method.toUpperCase()} index on table '${idx.tableName}' using columns (${idx.columns.join(', ')})${idx.where ? ` WHERE ${idx.where}` : ''}.`,
-         severity: 'info'
-       }))
-    }
-
-    if (selectedAnalysis === 'missing-index') {
-      const results: AnalysisResult[] = []
-      schema.foreignKeys.forEach(fk => {
-        const table = schema.tables.find(t => t.name === fk.sourceTable)
-        const col = table?.columns.find(c => c.name === fk.sourceColumn)
-        if (col?.isPrimaryKey) return
-        
-        const hasIndex = (schema.indexes || []).some(idx => 
-          idx.tableName === fk.sourceTable && 
-          idx.columns[0] === fk.sourceColumn &&
-          idx.method === 'btree'
-        )
-        
-        if (!hasIndex) {
-          results.push({
-            title: `Missing Index: ${fk.sourceTable}.${fk.sourceColumn}`,
-            message: `The foreign key column '${fk.sourceColumn}' is missing a B-Tree index. Foreign keys should be indexed to ensure fast joins and efficient cascading deletions.`,
-            severity: 'warning',
-            after: `CREATE INDEX ON "${fk.sourceTable}" ("${fk.sourceColumn}");`
-          })
-        }
-      })
-      return results
-    }
-    
-    return []
-  }, [schema, selectedAnalysis])
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
