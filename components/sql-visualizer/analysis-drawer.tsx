@@ -156,76 +156,70 @@ export function AnalysisDrawer({ isOpen, onClose, schema }: AnalysisDrawerProps)
         }
       })
 
-    // 3. Circular
-    const cascadeGraph: Record<string, string[]> = {}
+    // 3. Circular Dependencies
+    const fkGraph: Record<string, string[]> = {}
     schema.foreignKeys.forEach(fk => {
-      if (fk.onDelete === 'CASCADE') {
-        if (!cascadeGraph[fk.sourceTable]) cascadeGraph[fk.sourceTable] = []
-        cascadeGraph[fk.sourceTable].push(fk.targetTable)
-      }
-    })
-    const findFkCycle = (node: string, visited: Set<string>, path: string[]): string[] | null => {
-      const index = path.indexOf(node)
-      if (index !== -1) return [...path.slice(index), node]
-      if (visited.has(node)) return null
-      visited.add(node)
-      const neighbors = cascadeGraph[node] || []
-      for (const neighbor of neighbors) {
-        const cycle = findFkCycle(neighbor, visited, [...path, node])
-        if (cycle) return cycle
-      }
-      return null
-    }
-    const checkedTables = new Set<string>()
-    schema.tables.forEach(t => {
-      const cycle = findFkCycle(t.name, checkedTables, [])
-      if (cycle) {
-        results.circular.push({
-          title: `Cascade Loop: ${cycle.join(' → ')}`,
-          message: `A circular 'ON DELETE CASCADE' path detected. This can lead to unpredictable recursive deletions.`,
-          severity: 'error'
-        })
-        cycle.forEach(n => checkedTables.add(n))
-      }
+      if (!fkGraph[fk.sourceTable]) fkGraph[fk.sourceTable] = []
+      fkGraph[fk.sourceTable].push(fk.targetTable)
     })
 
-    const triggerGraph: Record<string, { table: string, function: string }[]> = {}
-    schema.triggers.forEach(trig => {
-      const func = schema.functions.find(f => f.name.toLowerCase() === trig.functionName.toLowerCase())
-      if (func) {
-        const body = func.body.toLowerCase()
-        schema.tables.forEach(targetTable => {
-           const tName = targetTable.name.toLowerCase()
-           const updatePattern = new RegExp(`(?:UPDATE|INSERT\\s+INTO|DELETE\\s+FROM)\\s+["']?${tName}["']?`, 'i')
-           if (updatePattern.test(body)) {
-              if (!triggerGraph[trig.tableName]) triggerGraph[trig.tableName] = []
-              triggerGraph[trig.tableName].push({ table: targetTable.name, function: trig.functionName })
-           }
-        })
-      }
-    })
-    const findTriggerCycle = (node: string, visited: Set<string>, path: { table: string, function: string }[]): { table: string, function: string }[] | null => {
-      const index = path.findIndex(p => p.table === node)
-      if (index !== -1) return [...path.slice(index), { table: node, function: '' }]
-      if (visited.has(node)) return null
+    const foundCycles: string[][] = []
+    const visited = new Set<string>()
+    const recStack = new Set<string>()
+
+    const findCycle = (node: string, path: string[]) => {
       visited.add(node)
-      const neighbors = triggerGraph[node] || []
+      recStack.add(node)
+      path.push(node)
+
+      const neighbors = fkGraph[node] || []
       for (const neighbor of neighbors) {
-        const cycle = findTriggerCycle(neighbor.table, visited, [...path, { table: node, function: neighbor.function }])
-        if (cycle) return cycle
+        if (neighbor === node) {
+          foundCycles.push([node, node])
+          continue
+        }
+        if (!visited.has(neighbor)) {
+          findCycle(neighbor, [...path])
+        } else if (recStack.has(neighbor)) {
+          const cycleStartIdx = path.indexOf(neighbor)
+          if (cycleStartIdx !== -1) {
+            foundCycles.push([...path.slice(cycleStartIdx), neighbor])
+          }
+        }
       }
-      return null
+      recStack.delete(node)
     }
-    const checkedTriggerTables = new Set<string>()
-    schema.tables.forEach(t => {
-      const cycle = findTriggerCycle(t.name, checkedTriggerTables, [])
-      if (cycle) {
-        results.circular.push({
-          title: `Circular Trigger: ${t.name}`,
-          message: cycle.map((c, idx) => idx === cycle.length -1 ? c.table : `${c.table} → ${cycle[idx+1].table}`).join(' '),
+
+    Object.keys(fkGraph).forEach(table => {
+      if (!visited.has(table)) findCycle(table, [])
+    })
+
+    // Remove duplicates
+    const uniqueCycles = Array.from(new Set(foundCycles.map(c => c.join('->'))))
+      .map(s => s.split('->'))
+
+    results.circular = uniqueCycles.map(cycle => {
+      const isSelf = cycle.length === 2 && cycle[0] === cycle[1]
+      const isDirect = cycle.length === 3 && cycle[0] === cycle[2]
+      
+      if (isSelf) {
+        return {
+          title: `Self-Reference: ${cycle[0]}`,
+          message: `Table '${cycle[0]}' references itself. This is common in parent/child hierarchies (like categories) and is usually safe.`,
+          severity: 'info'
+        }
+      }
+      if (isDirect) {
+        return {
+          title: `Direct Cycle: ${cycle[0]} ↔ ${cycle[1]}`,
+          message: `Mutual dependency detected between '${cycle[0]}' and '${cycle[1]}'. High risk for inserts: you cannot easily insert rows into either table without disabling constraints or using nullable FKs.`,
           severity: 'error'
-        })
-        cycle.forEach(c => checkedTriggerTables.add(c.table))
+        }
+      }
+      return {
+        title: `Indirect Loop: ${cycle.join(' → ')}`,
+        message: `A multi-table circular dependency was detected. High risk for cascading deletes and complex migrations.`,
+        severity: 'error'
       }
     })
 
