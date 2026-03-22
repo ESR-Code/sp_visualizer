@@ -199,12 +199,13 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
                         <impact.icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-zinc-200">{impact.name}</span>
-                          <Badge variant="outline" className="text-[10px] uppercase tracking-wider text-zinc-500">
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="font-semibold text-zinc-200 break-all leading-relaxed">{impact.name}</span>
+                          <Badge variant="outline" className="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">
                             {impact.type}
                           </Badge>
                         </div>
+
                         <p className="mt-1 text-xs text-zinc-500">{impact.reason}</p>
                       </div>
                     </div>
@@ -246,9 +247,9 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
                         <impact.icon className="h-4 w-4" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-zinc-200">{impact.name}</span>
-                          <Badge variant="outline" className="text-[10px] uppercase tracking-wider text-zinc-500">
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="font-semibold text-zinc-200 break-all leading-relaxed">{impact.name}</span>
+                          <Badge variant="outline" className="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">
                             {impact.type}
                           </Badge>
                         </div>
@@ -279,18 +280,18 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
                       <div className="grid gap-2">
                         {cascadeImpacts.filter(i => i.action === 'DELETE').map((impact, idx) => (
                           <div key={idx} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                            <div className="flex items-center gap-3">
-                              <div className="rounded bg-red-500/10 p-1.5 text-red-500">
-                                <Table2 className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium text-zinc-100">{impact.tableName}</div>
-                                <div className="text-xs text-zinc-500">via {impact.columnName}</div>
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="border-red-500/30 bg-red-500/5 text-[10px] text-red-400">
-                              {impact.type}
-                            </Badge>
+                             <div className="flex flex-1 items-center gap-3 pr-4 overflow-hidden">
+                               <div className="shrink-0 rounded bg-red-500/10 p-1.5 text-red-500">
+                                 <Table2 className="h-4 w-4" />
+                               </div>
+                               <div className="overflow-hidden">
+                                 <div className="text-sm font-medium text-zinc-100 break-all">{impact.tableName}</div>
+                                 <div className="text-xs text-zinc-500 break-all">via {impact.columnName}</div>
+                               </div>
+                             </div>
+                             <Badge variant="outline" className="shrink-0 border-red-500/30 bg-red-500/5 text-[10px] text-red-400">
+                               {impact.type}
+                             </Badge>
                           </div>
                         ))}
                       </div>
@@ -307,18 +308,18 @@ export function ImpactModal({ isOpen, onClose, schema, table }: ImpactModalProps
                       <div className="grid gap-2">
                         {cascadeImpacts.filter(i => i.action === 'UPDATE').map((impact, idx) => (
                           <div key={idx} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                            <div className="flex items-center gap-3">
-                              <div className="rounded bg-blue-500/10 p-1.5 text-blue-500">
-                                <Table2 className="h-4 w-4" />
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium text-zinc-100">{impact.tableName}</div>
-                                <div className="text-xs text-zinc-500">via {impact.columnName}</div>
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="border-blue-500/30 bg-blue-500/5 text-[10px] text-blue-400">
-                              {impact.type}
-                            </Badge>
+                             <div className="flex flex-1 items-center gap-3 pr-4 overflow-hidden">
+                               <div className="shrink-0 rounded bg-blue-500/10 p-1.5 text-blue-500">
+                                 <Table2 className="h-4 w-4" />
+                               </div>
+                               <div className="overflow-hidden">
+                                 <div className="text-sm font-medium text-zinc-100 break-all">{impact.tableName}</div>
+                                 <div className="text-xs text-zinc-500 break-all">via {impact.columnName}</div>
+                               </div>
+                             </div>
+                             <Badge variant="outline" className="shrink-0 border-blue-500/30 bg-blue-500/5 text-[10px] text-blue-400">
+                               {impact.type}
+                             </Badge>
                           </div>
                         ))}
                       </div>
