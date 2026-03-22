@@ -1,13 +1,13 @@
 import dagre from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
-import type { ParsedSchema } from './sql-types'
+import type { ParsedSchema, ParsedPolicy } from './sql-types'
 
 const NODE_DIMENSIONS = {
   table: { width: 250, height: 200 },
   enum: { width: 180, height: 100 },
   function: { width: 220, height: 120 },
   trigger: { width: 200, height: 120 },
-  policy: { width: 240, height: 120 },
+  policy: { width: 300, height: 160 },
   view: { width: 320, height: 150 },
   extension: { width: 180, height: 100 },
 }
@@ -60,13 +60,36 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
     })
   })
 
-  // Create policy nodes
+  // Group policies by table
+  const policiesByTable = new Map<string, ParsedPolicy[]>()
   schema.policies.forEach((policy) => {
+    if (!policiesByTable.has(policy.tableName)) {
+      policiesByTable.set(policy.tableName, [])
+    }
+    policiesByTable.get(policy.tableName)!.push(policy)
+  })
+
+  // Create policy groups and nodes
+  policiesByTable.forEach((policies, tableName) => {
+    const groupId = `group-policies-${tableName}`
+    
+    // Create the group node
     nodes.push({
-      id: policy.id,
-      type: 'policy',
+      id: groupId,
+      type: 'group',
+      data: { label: `RLS Policies: ${tableName}` },
       position: { x: 0, y: 0 },
-      data: { label: policy.name, policy },
+    })
+
+    // Create policy nodes as children of the group
+    policies.forEach((policy) => {
+      nodes.push({
+        id: policy.id,
+        type: 'policy',
+        parentId: groupId,
+        position: { x: 20, y: 40 }, // Initial relative position, will be refined in layout
+        data: { label: policy.name, policy },
+      })
     })
   })
 
@@ -286,15 +309,28 @@ export function applyDagreLayout(
     marginy: 50,
   })
 
-  // Find connected versus isolated nodes
+  // Find connected versus isolated nodes (considering groups)
   const connectedNodeIds = new Set<string>()
   edges.forEach((edge) => {
-    connectedNodeIds.add(edge.source)
-    connectedNodeIds.add(edge.target)
+    let sId = edge.source
+    let tId = edge.target
+    const sNode = nodes.find(n => n.id === sId)
+    const tNode = nodes.find(n => n.id === tId)
+    if (sNode?.parentId && sNode.parentId !== 'isolated-group') sId = sNode.parentId
+    if (tNode?.parentId && tNode.parentId !== 'isolated-group') tId = tNode.parentId
+    
+    connectedNodeIds.add(sId)
+    connectedNodeIds.add(tId)
   })
 
-  const connectedNodes = nodes.filter((node) => connectedNodeIds.has(node.id))
-  const isolatedNodes = nodes.filter((node) => !connectedNodeIds.has(node.id))
+  const connectedNodes = nodes.filter((node) => 
+    connectedNodeIds.has(node.id) || 
+    (node.parentId && node.parentId !== 'isolated-group' && connectedNodeIds.has(node.parentId))
+  )
+  const isolatedNodes = nodes.filter((node) => 
+    !connectedNodeIds.has(node.id) && 
+    (!node.parentId || node.parentId === 'isolated-group' || !connectedNodeIds.has(node.parentId))
+  )
 
   // Build a type lookup for nodes
   const nodeTypeMap = new Map<string, string>()
@@ -302,21 +338,48 @@ export function applyDagreLayout(
     nodeTypeMap.set(node.id, node.type || 'unknown')
   })
 
-  // Add connected nodes to the graph
+  // Pre-calculate group dimensions if they are not measured
+  const groupChildrenMap = new Map<string, Node[]>()
+  nodes.forEach(n => {
+    if (n.parentId) {
+      if (!groupChildrenMap.has(n.parentId)) groupChildrenMap.set(n.parentId, [])
+      groupChildrenMap.get(n.parentId)!.push(n)
+    }
+  })
+
+  // Add connected nodes (or their parents if they are grouped) to the graph
   connectedNodes.forEach((node) => {
-    // Priority 1: Use actual measured dimensions from the browser if available
+    // If node is a child of a group, we handle layout via the group node in Dagre
+    if (node.parentId && node.parentId !== 'isolated-group') {
+      return
+    }
+
     let width = node.measured?.width || node.width
     let height = node.measured?.height || node.height
-
+    
     // Priority 2: Use intelligent estimates for new nodes
     if (!width || !height) {
-      const base = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || { width: 200, height: 100 }
-      width = base.width
-      height = base.height
-
-      // If it's a table, estimate height based on row count
-      if (node.type === 'table' && (node.data as any)?.table?.columns) {
-        height = Math.max(height, 60 + (node.data as any).table.columns.length * 36)
+      if (node.type === 'group' && node.id.startsWith('group-policies-')) {
+        const children = groupChildrenMap.get(node.id) || []
+        const padding = 50
+        const policyWidth = NODE_DIMENSIONS.policy.width
+        const policyHeight = NODE_DIMENSIONS.policy.height
+        const gap = 30
+        
+        width = policyWidth + padding * 2
+        height = 80 + children.length * (policyHeight + gap) // 80 for header
+        
+        // Update the node style so React Flow knows the dimensions
+        node.style = { ...node.style, width, height }
+      } else {
+        const base = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || { width: 200, height: 100 }
+        width = base.width
+        height = base.height
+  
+        // If it's a table, estimate height based on row count
+        if (node.type === 'table' && (node.data as any)?.table?.columns) {
+          height = Math.max(height, 60 + (node.data as any).table.columns.length * 36)
+        }
       }
     }
 
@@ -334,11 +397,24 @@ export function applyDagreLayout(
   //   - FK edges (Table → Table): keep as-is ✓
   //   - Function → Function call edges: keep as-is ✓
   edges.forEach((edge) => {
+    let sourceId = edge.source
+    let targetId = edge.target
+    
+    // If nodes are in groups, use the group ID for dagre layout
+    const sourceNode = nodes.find(n => n.id === edge.source)
+    const targetNode = nodes.find(n => n.id === edge.target)
+    
+    if (sourceNode?.parentId && sourceNode.parentId !== 'isolated-group') sourceId = sourceNode.parentId
+    if (targetNode?.parentId && targetNode.parentId !== 'isolated-group') targetId = targetNode.parentId
+
+    // Avoid self-loops in dagre if both ends ended up in the same group
+    if (sourceId === targetId) return
+
     const sourceType = nodeTypeMap.get(edge.source)
     const targetType = nodeTypeMap.get(edge.target)
 
-    // Only add edges for connected nodes
-    if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) return
+    // Only add edges for connected nodes that are in the dagre graph
+    if (!g.hasNode(sourceId) || !g.hasNode(targetId)) return
 
     // Reverse trigger→table and policy→table so tables rank before them
     if (
@@ -346,21 +422,23 @@ export function applyDagreLayout(
       (sourceType === 'policy' && targetType === 'table')
     ) {
       // Reversed: table → trigger/policy (puts table LEFT, trigger/policy RIGHT)
-      g.setEdge(edge.target, edge.source, { weight: 2 })
+      g.setEdge(targetId, sourceId, { weight: 2 })
     } else {
       // Keep normal direction
-      g.setEdge(edge.source, edge.target, { weight: 1 })
+      g.setEdge(sourceId, targetId, { weight: 1 })
     }
   })
 
   dagre.layout(g)
 
-  const results: Node[] = connectedNodes.map((node) => {
+  const results: Node[] = nodes.filter(n => g.hasNode(n.id)).map((node) => {
     const nodeWithPosition = g.node(node.id)
-    const dimensions = NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
-      width: 200,
-      height: 100,
-    }
+    const dimensions = node.type === 'group' && node.id.startsWith('group-policies-') 
+      ? { width: Number(node.style?.width) || 300, height: Number(node.style?.height) || 200 }
+      : NODE_DIMENSIONS[node.type as keyof typeof NODE_DIMENSIONS] || {
+        width: 200,
+        height: 100,
+      }
 
     return {
       ...node,
@@ -368,6 +446,28 @@ export function applyDagreLayout(
         x: nodeWithPosition.x - dimensions.width / 2,
         y: nodeWithPosition.y - dimensions.height / 2,
       },
+    }
+  })
+
+  // Position children relative to their groups
+  nodes.forEach(node => {
+    if (node.parentId && node.parentId.startsWith('group-policies-')) {
+      const parent = results.find(n => n.id === node.parentId)
+      if (parent) {
+        const children = groupChildrenMap.get(parent.id) || []
+        const index = children.findIndex(c => c.id === node.id)
+        const padding = 50
+        const policyHeight = NODE_DIMENSIONS.policy.height
+        const gap = 30
+        
+        results.push({
+          ...node,
+          position: {
+            x: padding,
+            y: 80 + index * (policyHeight + gap),
+          }
+        })
+      }
     }
   })
 

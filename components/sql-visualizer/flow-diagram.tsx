@@ -197,11 +197,25 @@ export const FlowDiagram = forwardRef<FlowDiagramRef, FlowDiagramProps>(
   // Filter nodes based on visibility and solo mode
   const filteredNodes = useMemo(() => {
     return nodes.filter((node) => {
-      // Always hide group nodes when their children are hidden, show otherwise
+      // Group nodes handling
       if (node.type === 'group') {
-        if (!soloRelatedNodeIds) return visibility.group
-        // In solo mode, hide the group unless a child is visible
-        return false
+        // RLS Policy groups are linked to policy visibility
+        if (node.id.startsWith('group-policies-')) {
+          if (soloRelatedNodeIds) {
+            // In solo mode, show the group frame if any of its children are visible
+            const childrenIds = nodes.filter(n => n.parentId === node.id).map(c => c.id)
+            return childrenIds.some(id => soloRelatedNodeIds.has(id))
+          }
+          return visibility.policy
+        }
+        
+        // Isolated components group
+        if (node.id === 'isolated-group') {
+          if (soloRelatedNodeIds) return false // Usually hide isolated group in solo mode unless specifically focusing it
+          return visibility.group
+        }
+
+        return visibility.group
       }
       
       // If in solo mode, only show the solo node and its related nodes
