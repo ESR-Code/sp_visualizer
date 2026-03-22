@@ -192,7 +192,7 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
   // Create edges for enum usages
   schema.enumUsages.forEach((usage) => {
     const sourceEnum = schema.enums.find(
-      (e) => e.name.toLowerCase() === usage.enumName.toLowerCase()
+      (e) => e.name?.toLowerCase() === usage.enumName?.toLowerCase()
     )
     const targetTable = schema.tables.find((t) => t.name === usage.tableName)
 
@@ -236,8 +236,10 @@ export function generateNodesAndEdges(schema: ParsedSchema): { nodes: Node[]; ed
   // Create edges for views → dependencies
   schema.views.forEach((view) => {
     view.dependencies.forEach((depName) => {
-      const targetTable = schema.tables.find((t) => t.name.toLowerCase() === depName.toLowerCase())
-      const targetView = schema.views.find((v) => v.name.toLowerCase() === depName.toLowerCase())
+      if (!depName) return
+
+      const targetTable = schema.tables.find((t) => t.name?.toLowerCase() === depName.toLowerCase())
+      const targetView = schema.views.find((v) => v.name?.toLowerCase() === depName.toLowerCase())
 
       if (targetTable) {
         edges.push({

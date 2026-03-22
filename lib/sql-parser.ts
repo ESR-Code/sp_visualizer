@@ -28,13 +28,13 @@ function parseTables(sql: string): { tables: ParsedTable[]; foreignKeys: Foreign
   const tables: ParsedTable[] = []
   const foreignKeys: ForeignKeyRelation[] = []
   
-  // Match CREATE TABLE statements - use a function to find the balanced closing paren
-  const tableStartRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(/gi
+  // Match: CREATE TABLE [IF NOT EXISTS] [schema.]table (
+  const tableStartRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?:["']([^"']+)["']|([^"'\s(.]+))\.)?(?:["']([^"']+)["']|([^"'\s(]+))\s*\(/gi
   
   let startMatch
   while ((startMatch = tableStartRegex.exec(sql)) !== null) {
-    const schema = startMatch[1] || 'public'
-    const tableName = startMatch[2]
+    const schema = (startMatch[1] || startMatch[2] || 'public').replace(/["']/g, '')
+    const tableName = (startMatch[3] || startMatch[4] || '').replace(/["']/g, '')
     
     // Find balanced closing parenthesis
     const startIdx = tableStartRegex.lastIndex
@@ -258,15 +258,15 @@ function parseEnums(sql: string): ParsedEnum[] {
 function parseFunctions(sql: string): ParsedFunction[] {
   const functions: ParsedFunction[] = []
   
-  // Match CREATE FUNCTION (supports quoted identifiers and return types)
-  const funcRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)\s*RETURNS\s+["']?([^"';]+?)["']?(?=$|\s|;|LANGUAGE|AS)/gi
+  // Match: CREATE [OR REPLACE] FUNCTION [schema.]name (params) RETURNS returnType
+  const funcRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:(?:["']([^"']+)["']|([^"'\s.]+))\.)?(?:["']([^"']+)["']|([^"'\s(]+))\s*\(([\s\S]*?)\)\s*RETURNS\s+["']?([^"';]+?)["']?(?=$|\s|;|LANGUAGE|AS)/gi
   
   let match
   while ((match = funcRegex.exec(sql)) !== null) {
-    const schema = match[1] || 'public'
-    const funcName = match[2]
-    const params = match[3].trim()
-    let returnType = match[4].trim()
+    const schema = (match[1] || match[2] || 'public').replace(/["']/g, '')
+    const funcName = (match[3] || match[4]).replace(/["']/g, '')
+    const params = match[5].trim()
+    let returnType = match[6].trim()
     
     // Find body to show in "View SQL"
     let body = ''
@@ -297,15 +297,16 @@ function parseFunctions(sql: string): ParsedFunction[] {
 function parseTriggers(sql: string): ParsedTrigger[] {
   const triggers: ParsedTrigger[] = []
   
-  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+["']?([^"'\s]+)["']?\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+([\s\S]+?)\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?[\s\S]*?(?:WHEN\s*\(([\s\S]*?)\))?\s*EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s*\(([\s\S]*?)\)/gi
+  // Match: CREATE [OR REPLACE] TRIGGER trigger BEFORE|AFTER INSTEAD OF events ON [schema.]table ...
+  const triggerRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(?:["']([^"']+)["']|([^"'\s]+))\s+(BEFORE|AFTER|INSTEAD\s+OF)\s+([\s\S]+?)\s+ON\s+(?:(?:["']([^"']+)["']|([^"'\s.]+))\.)?(?:["']([^"']+)["']|([^"'\s]+))[\s\S]*?(?:WHEN\s*\(([\s\S]*?)\))?\s*EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+(?:(?:["']([^"']+)["']|([^"'\s.]+))\.)?(?:["']([^"']+)["']|([^"'\s(]+))\s*\(([\s\S]*?)\)/gi
   
   let match
   while ((match = triggerRegex.exec(sql)) !== null) {
-    const triggerName = match[1]
-    const timing = match[2].replace(/\s+/g, ' ').toUpperCase() as ParsedTrigger['timing']
+    const triggerName = (match[1] || match[2]).replace(/["']/g, '')
+    const timing = match[3].replace(/\s+/g, ' ').toUpperCase() as ParsedTrigger['timing']
     
     // Parse multiple events and updated columns
-    const eventText = match[3].toUpperCase()
+    const eventText = match[4].toUpperCase()
     const events: ParsedTrigger['events'] = []
     const updatedColumns: string[] = []
     
@@ -322,11 +323,12 @@ function parseTriggers(sql: string): ParsedTrigger[] {
     }
     if (eventText.includes('DELETE')) events.push('DELETE')
     
-    const tableSchema = match[4] || 'public'
-    const tableName = match[5]
-    const whenClause = match[6]?.trim()
-    const funcSchema = match[7] || 'public'
-    const funcName = match[8]
+    const tableSchema = (match[5] || match[6] || 'public').replace(/["']/g, '')
+    const tableName = (match[7] || match[8]).replace(/["']/g, '')
+    const whenClause = match[9]?.trim()
+    const funcSchema = (match[10] || match[11] || 'public').replace(/["']/g, '')
+    const funcName = (match[12] || match[13]).replace(/["']/g, '')
+    const params = match[14]?.trim() || ''
     
     triggers.push({
       id: generateId('trigger'),
@@ -349,24 +351,25 @@ function parseTriggers(sql: string): ParsedTrigger[] {
 function parsePolicies(sql: string): ParsedPolicy[] {
   const policies: ParsedPolicy[] = []
   
-  const policyRegex = /CREATE\s+POLICY\s+["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s]+)["']?\s*(?:AS\s+(PERMISSIVE|RESTRICTIVE)\s+)?(?:FOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\s+)?(?:TO\s+([\w,"'\s,]+)\s+)?(?:USING\s*\(([\s\S]*?)\))?(?:\s+WITH\s+CHECK\s*\(([\s\S]*?)\))?\s*;/gi
+  // Use a more robust regex that handles quoted identifiers with spaces
+  const policyRegex = /CREATE\s+POLICY\s+(?:["']([^"']+)["']|([^\s"]+))\s+ON\s+(?:(?:["']([^"']+)["']|([^\s.]+))\.)?(?:["']([^"']+)["']|([^\s(]+))\s*(?:AS\s+(PERMISSIVE|RESTRICTIVE)\s+)?(?:FOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\s+)?(?:TO\s+([\w,"'\s,]+)\s+)?(?:USING\s*\(([\s\S]*?)\))?(?:\s+WITH\s+CHECK\s*\(([\s\S]*?)\))?\s*;/gi
   
   let match
   while ((match = policyRegex.exec(sql)) !== null) {
-    const policyName = match[1]
-    const tableSchema = match[2] || 'public'
-    const tableName = match[3]
-    const permissive = match[4]?.toUpperCase() !== 'RESTRICTIVE'
-    const operation = (match[5]?.toUpperCase() || 'ALL') as ParsedPolicy['operation']
-    const rolesStr = match[6] || 'public'
-    const usingExpr = match[7]?.trim()
-    const withCheckExpr = match[8]?.trim()
+    const policyName = match[1] || match[2]
+    const tableSchema = (match[3] || match[4] || 'public').replace(/["']/g, '')
+    const tableName = (match[5] || match[6]).replace(/["']/g, '')
+    const permissive = match[7]?.toUpperCase() !== 'RESTRICTIVE'
+    const operation = (match[8]?.toUpperCase() || 'ALL') as ParsedPolicy['operation']
+    const rolesStr = match[9] || 'public'
+    const usingExpr = match[10]?.trim()
+    const withCheckExpr = match[11]?.trim()
     
-    const roles = rolesStr.split(',').map(r => r.trim()).filter(r => r.length > 0)
+    const roles = rolesStr.split(',').map(r => r.trim().replace(/["']/g, '')).filter(r => r.length > 0)
     
     policies.push({
       id: generateId('policy'),
-      name: policyName,
+      name: policyName.replace(/["']/g, ''),
       tableName,
       tableSchema,
       permissive,
@@ -544,13 +547,15 @@ function parseViews(sql: string): ParsedView[] {
   const viewRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?(?:\s+WITH\s*\([^)]+\))?\s+AS\s+([\s\S]*?)(?=(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|TRIGGER|POLICY|TYPE)|ALTER\s+|DROP\s+|$))/gi
   
   // A more precise regex to capture the WITH clause without breaking the broader AS body
-  const viewRegexWithClause = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:["']?(\w+)["']?\.)?["']?(\w+)["']?(?:\s+WITH\s*\(([^)]+)\))?\s+AS\s+([\s\S]*?)(?=(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|TRIGGER|POLICY|TYPE)|ALTER\s+|DROP\s+|$))/gi
+  const viewRegexWithClause = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:(?:["']([^"']+)["']|([^"'\s.]+))\.)?(?:["']([^"']+)["']|([^"'\s]+))\s*(?:\s+WITH\s*\(([^)]+)\))?\s+AS\s+([\s\S]*?)(?=(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|TRIGGER|POLICY|TYPE)|ALTER\s+|DROP\s+|$))/gi
   
   let match
   while ((match = viewRegexWithClause.exec(sql)) !== null) {
-    const rawWithClause = match[3] || ''
+    const tableSchema = (match[1] || match[2] || 'public').replace(/["']/g, '')
+    const tableName = (match[3] || match[4] || '').replace(/["']/g, '')
+    const rawWithClause = match[5] || ''
     const isSecurityInvoker = /security_invoker\s*=\s*['"]?(on|true|1)['"]?/i.test(rawWithClause)
-    const asClause = match[4] || ''
+    const asClause = match[6] || ''
     
     // Naïve table dependency extraction
     const dependencies = new Set<string>()
@@ -564,8 +569,8 @@ function parseViews(sql: string): ParsedView[] {
 
     views.push({
       id: generateId('view'),
-      schema: match[1] || 'public',
-      name: match[2],
+      schema: tableSchema,
+      name: tableName,
       securityInvoker: isSecurityInvoker,
       dependencies: Array.from(dependencies),
       code: match[0].trim(),
@@ -595,13 +600,14 @@ function parseExtensions(sql: string): ParsedExtension[] {
 
 // Parse RLS status
 function parseRLSStatus(sql: string, tables: ParsedTable[]) {
-  const rlsRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?\s+(ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY/gi
+  // Match: ALTER TABLE [ONLY] [schema.]table [ENABLE|DISABLE] ROW LEVEL SECURITY
+  const rlsRegex = /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:(?:["']([^"']+)["']|([^"'\s(.]+))\.)?(?:["']([^"']+)["']|([^"'\s(]+))\s+(ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY/gi
   
   let match
   while ((match = rlsRegex.exec(sql)) !== null) {
-    const tableSchema = match[1] || 'public'
-    const tableName = match[2]
-    const action = match[3].toUpperCase()
+    const tableSchema = (match[1] || match[2] || 'public').replace(/["']/g, '')
+    const tableName = (match[3] || match[4] || '').replace(/["']/g, '')
+    const action = match[5].toUpperCase()
     
     const table = tables.find(t => 
       t.name.toLowerCase() === tableName.toLowerCase() && 
@@ -619,17 +625,17 @@ function parseIndexes(sql: string): ParsedIndex[] {
   const indexes: ParsedIndex[] = []
   
   // CREATE [UNIQUE] INDEX [IF NOT EXISTS] name ON [schema.]table [USING method] (column, ...) [WHERE ...]
-  const indexRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?([^"'\s]+)["']?\s+ON\s+(?:["']?([^"'\s.]+)["']?\.)?["']?([^"'\s(]+)["']?(?:\s+USING\s+["']?(\w+)["']?)?\s*\(([\s\S]*?)\)(?:\s+WHERE\s*\(([\s\S]*?)\))?/gi
+  const indexRegex = /CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["']([^"']+)["']|([^"'\s]+))\s+ON\s+(?:(?:["']([^"']+)["']|([^"'\s.]+))\.)?(?:["']([^"']+)["']|([^"'\s(]+))(?:\s+USING\s+["']?(\w+)["']?)?\s*\(([\s\S]*?)\)(?:\s+WHERE\s*\(([\s\S]*?)\))?/gi
   
   let match
   while ((match = indexRegex.exec(sql)) !== null) {
     const isUnique = !!match[1]
-    const indexName = match[2]
-    const tableSchema = match[3] || 'public'
-    const tableName = match[4]
-    const method = match[5] || 'btree'
-    const columnsStr = match[6]
-    const whereExpr = match[7]?.trim()
+    const indexName = (match[2] || match[3]).replace(/["']/g, '')
+    const tableSchema = (match[4] || match[5] || 'public').replace(/["']/g, '')
+    const tableName = (match[6] || match[7]).replace(/["']/g, '')
+    const method = match[8] || 'btree'
+    const columnsStr = match[9]
+    const whereExpr = match[10]?.trim()
     
     const columns = columnsStr.split(',').map(c => {
       const parts = c.trim().split(/\s+/)
